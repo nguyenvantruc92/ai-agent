@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sql } from '@/db/client';
 import { createCheckpointer, createStore } from '@/features/agent/runtime';
+import { importKnowledgeSnapshot } from '@/features/knowledge/snapshot';
 import { resetSeedOrders } from '@/features/orders/repository';
 
 async function main() {
@@ -31,6 +32,10 @@ async function main() {
 
     const [{ count }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM orders`;
     if (count === 0) console.log(`Seeded ${await resetSeedOrders()} demo orders`);
+
+    // A fresh database gets the committed knowledge snapshot instead of re-embedding.
+    const imported = await importKnowledgeSnapshot();
+    if (imported) console.log(`Imported ${imported} knowledge documents from data/seed`);
   } finally {
     await sql`SELECT pg_advisory_unlock(7242001)`;
     await sql.end();

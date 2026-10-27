@@ -10,6 +10,7 @@
     "worker": "tsx src/worker/index.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:seed": "tsx src/scripts/seed.ts",
+    "db:export-knowledge": "tsx src/scripts/export-knowledge.ts",
     "admin:password": "tsx src/scripts/admin-password.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
