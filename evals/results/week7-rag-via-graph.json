@@ -1,0 +1,900 @@
+{
+  "goldenSet": "golden-set.v1",
+  "model": "gpt-4.1-2025-04-14",
+  "embeddingModel": "text-embedding-3-small",
+  "retrieval": {
+    "topK": 8,
+    "minSimilarity": 0.45,
+    "maxContextChunks": 5,
+    "maxContextTokens": 1200
+  },
+  "cases": 35,
+  "passed": 33,
+  "errors": 0,
+  "recallAt5": 1,
+  "citationValidity": 1,
+  "citationCoverage": 0.9531,
+  "insufficientAccuracy": 0.9714,
+  "keywordAccuracy": 1,
+  "latencyMs": {
+    "avg": 2617,
+    "p95": 8585
+  },
+  "totalTokens": 60893,
+  "results": [
+    {
+      "id": "product-01",
+      "passed": true,
+      "traceId": "c6fcd8a8-c6ad-4357-8d4e-58dc670d14f7",
+      "route": "rag",
+      "latencyMs": 5741,
+      "tokens": 1509,
+      "promptSourceIds": [
+        "product:SM-007",
+        "product:SM-001",
+        "product:SM-008",
+        "product:SM-002",
+        "product:SM-006"
+      ],
+      "citedSourceIds": [
+        "product:SM-001"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có Áo sơ mi Oxford trắng dáng regular (SM-001) với giá 499.000 VNĐ. Sản phẩm này có chất liệu 100% cotton Oxford, dáng regular dễ mặc, phù hợp đi làm và gặp gỡ cuối tuần. Bạn có thể lựa chọn các size S, M, L, XL nhé.",
+      "error": null
+    },
+    {
+      "id": "product-02",
+      "passed": true,
+      "traceId": "8109de5f-7bdd-4f27-b50a-2d4271034cd3",
+      "route": "rag",
+      "latencyMs": 1998,
+      "tokens": 1400,
+      "promptSourceIds": [
+        "product:PL-005",
+        "product:PL-002",
+        "product:PL-003",
+        "policy:huong-dan-chon-size:1",
+        "policy:huong-dan-chon-size:2"
+      ],
+      "citedSourceIds": [
+        "product:PL-002"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện còn size L cho Áo polo pique trắng (PL-002). Bạn có thể ghé shop tại 72–74 Lê Đại Hành hoặc liên hệ để được hỗ trợ đặt hàng nhé!",
+      "error": null
+    },
+    {
+      "id": "product-03",
+      "passed": true,
+      "traceId": "e9d234a4-78b6-4c67-ac56-60f7c7d482cf",
+      "route": "rag",
+      "latencyMs": 1919,
+      "tokens": 1471,
+      "promptSourceIds": [
+        "product:SM-003",
+        "product:SM-007",
+        "product:SM-008",
+        "product:SM-002",
+        "product:SM-006"
+      ],
+      "citedSourceIds": [
+        "product:SM-003"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo sơ mi linen be dáng relaxed (SM-003) được làm từ chất liệu 55% linen và 45% cotton, mang lại cảm giác thoáng mát và thoải mái khi mặc.",
+      "error": null
+    },
+    {
+      "id": "product-04",
+      "passed": true,
+      "traceId": "4c4da0a7-9cc6-4363-a7f8-c0dbc487d739",
+      "route": "rag",
+      "latencyMs": 1838,
+      "tokens": 1496,
+      "promptSourceIds": [
+        "product:QT-005",
+        "product:QT-006",
+        "product:QT-002",
+        "product:JK-003",
+        "product:SM-006"
+      ],
+      "citedSourceIds": [
+        "product:QT-006"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Shop hiện có sản phẩm quần jeans màu xanh nhạt là Quần jeans straight fit xanh nhạt (QT-006). Sản phẩm này có thiết kế ống đứng, wash sáng vừa, phù hợp phong cách casual và còn đủ các size 29, 30, 31, 32, 34.",
+      "error": null
+    },
+    {
+      "id": "product-05",
+      "passed": true,
+      "traceId": "6b729a66-e647-48f1-b05e-39d1ffb27b53",
+      "route": "rag",
+      "latencyMs": 3473,
+      "tokens": 1326,
+      "promptSourceIds": [
+        "product:JK-001",
+        "product:JK-002",
+        "product:JK-004",
+        "product:JK-003"
+      ],
+      "citedSourceIds": [
+        "product:JK-001"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo khoác bomber đen (JK-001) tại Fashion Tomodev có giá 899.000 VNĐ. Nếu bạn cần thêm thông tin về size hoặc chất liệu, shop cũng sẵn sàng hỗ trợ nhé!",
+      "error": null
+    },
+    {
+      "id": "product-06",
+      "passed": true,
+      "traceId": "12cd5519-a559-4bd4-9187-c966a747b16e",
+      "route": "rag",
+      "latencyMs": 2526,
+      "tokens": 1500,
+      "promptSourceIds": [
+        "product:TS-002",
+        "product:TS-005",
+        "product:PK-002",
+        "product:TS-001",
+        "product:TS-003"
+      ],
+      "citedSourceIds": [
+        "product:TS-002"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có sản phẩm Áo thun cotton đen basic (TS-002) với màu đen, cổ tròn, vải cotton 100%, phù hợp mặc hằng ngày. Nếu bạn cần thêm thông tin về size hoặc chi tiết sản phẩm, shop sẵn sàng hỗ trợ nhé!",
+      "error": null
+    },
+    {
+      "id": "product-07",
+      "passed": true,
+      "traceId": "92645427-22bb-40e0-9c51-e077fb7e3fd7",
+      "route": "rag",
+      "latencyMs": 1771,
+      "tokens": 1403,
+      "promptSourceIds": [
+        "product:QT-001",
+        "product:QT-002",
+        "policy:huong-dan-chon-size:2",
+        "policy:huong-dan-chon-size:3",
+        "policy:huong-dan-chon-size:1"
+      ],
+      "citedSourceIds": [
+        "product:QT-001"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Quần chinos be (QT-001) tại Fashion Tomodev hiện có các size: 29, 30, 31, 32, 34 và 36. Bạn có thể lựa chọn size phù hợp với số đo của mình nhé.",
+      "error": null
+    },
+    {
+      "id": "product-08",
+      "passed": true,
+      "traceId": "eb85b686-0a3d-481b-9160-d1113f889fd7",
+      "route": "rag",
+      "latencyMs": 2228,
+      "tokens": 986,
+      "promptSourceIds": [
+        "product:PL-004",
+        "policy:bao-quan-san-pham:3"
+      ],
+      "citedSourceIds": [
+        "product:PL-004"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo polo dệt kim be (PL-004) được làm từ 72% viscose và 28% nylon bạn nhé.",
+      "error": null
+    },
+    {
+      "id": "product-09",
+      "passed": true,
+      "traceId": "9306c9d8-c56c-46ef-83e4-0b22e8fd7f18",
+      "route": "rag",
+      "latencyMs": 1894,
+      "tokens": 1485,
+      "promptSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-tra-hang-va-hoan-tien:2",
+        "product:JK-004",
+        "product:PL-006",
+        "product:SM-004"
+      ],
+      "citedSourceIds": [
+        "product:JK-004",
+        "product:PL-006",
+        "product:SM-004"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Hiện tại, các sản phẩm sau tại Fashion Tomodev đang trong tình trạng sắp hết hàng:\n- Áo khoác blazer casual xám (JK-004)\n- Áo polo sọc ngang xanh rêu (PL-006)\n- Áo sơ mi linen xanh rêu dáng relaxed (SM-004)\nNếu bạn quan tâm đến các sản phẩm này, shop khuyến khích đặt sớm để tránh hết size hoặc hết hàng.",
+      "error": null
+    },
+    {
+      "id": "product-10",
+      "passed": true,
+      "traceId": "09d53faf-da8a-422a-ba98-d79195164bc2",
+      "route": "rag",
+      "latencyMs": 1880,
+      "tokens": 1478,
+      "promptSourceIds": [
+        "product:PK-003",
+        "product:KN-002",
+        "product:SM-005",
+        "product:QT-002",
+        "product:PL-003"
+      ],
+      "citedSourceIds": [
+        "product:PK-003"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có sản phẩm mũ lưỡi trai cotton navy (PK-003). Mũ có thiết kế điều chỉnh được phía sau, logo thêu tối giản, chất liệu 100% cotton, freesize và đang còn hàng tại shop.",
+      "error": null
+    },
+    {
+      "id": "product-11",
+      "passed": true,
+      "traceId": "b77423c1-4864-4d88-a9eb-2636dc6639ec",
+      "route": "rag",
+      "latencyMs": 1440,
+      "tokens": 1046,
+      "promptSourceIds": [
+        "product:KN-001",
+        "product:KN-002"
+      ],
+      "citedSourceIds": [
+        "product:KN-001"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo len cổ tròn xám than (KN-001) tại Fashion Tomodev có giá 649.000 VNĐ bạn nhé.",
+      "error": null
+    },
+    {
+      "id": "product-12",
+      "passed": true,
+      "traceId": "1f7410d1-615c-4e13-a001-925942b3ebde",
+      "route": "rag",
+      "latencyMs": 1735,
+      "tokens": 1396,
+      "promptSourceIds": [
+        "product:SM-006",
+        "product:SM-005",
+        "product:JK-003",
+        "policy:huong-dan-chon-size:3",
+        "policy:huong-dan-chon-size:1"
+      ],
+      "citedSourceIds": [
+        "product:SM-006"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có sẵn size M cho Áo sơ mi denim xanh trung (SM-006). Bạn có thể lựa chọn size này khi đặt hàng tại shop nhé.",
+      "error": null
+    },
+    {
+      "id": "product-13",
+      "passed": true,
+      "traceId": "eb558ae9-6e12-4aa0-9a7c-25a1b9f5f0d8",
+      "route": "rag",
+      "latencyMs": 2674,
+      "tokens": 1499,
+      "promptSourceIds": [
+        "product:QT-009",
+        "product:QT-008",
+        "product:PL-005",
+        "product:QT-002",
+        "product:QT-001"
+      ],
+      "citedSourceIds": [
+        "product:QT-009"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Quần short thể thao đen (QT-009) tại Fashion Tomodev được làm từ chất liệu 100% polyester, nhẹ và có quần lót lưới bên trong. Nếu bạn cần thêm thông tin về sản phẩm, shop sẵn sàng hỗ trợ!",
+      "error": null
+    },
+    {
+      "id": "product-14",
+      "passed": true,
+      "traceId": "0ad6f0af-13d5-427d-a5cd-973d2c7842d0",
+      "route": "rag",
+      "latencyMs": 1705,
+      "tokens": 1073,
+      "promptSourceIds": [
+        "product:PK-001",
+        "product:PK-002"
+      ],
+      "citedSourceIds": [
+        "product:PK-001"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có thắt lưng da nâu (PK-001) với các độ dài là 105 cm, 115 cm và 125 cm. Bạn có thể lựa chọn size phù hợp với nhu cầu của mình nhé!",
+      "error": null
+    },
+    {
+      "id": "product-15",
+      "passed": true,
+      "traceId": "ed55825a-3e0f-44ea-b86f-0c12faa124a0",
+      "route": "rag",
+      "latencyMs": 2613,
+      "tokens": 1545,
+      "promptSourceIds": [
+        "product:JK-002",
+        "product:PL-003",
+        "product:TS-005",
+        "product:QT-002",
+        "product:SM-002"
+      ],
+      "citedSourceIds": [
+        "product:PL-003",
+        "product:TS-005"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện có hai sản phẩm màu xanh navy với giá dưới 400.000 VNĐ:\n\n- Áo polo pique xanh navy (PL-003), giá 389.000 VNĐ, chất liệu 100% cotton pique, đủ size S đến XXL.\n- Áo thun henley xanh navy (TS-005), giá 329.000 VNĐ, chất liệu 95% cotton, 5% spandex, size M, L, XL.\n\nBạn có thể tham khảo và chọn sản phẩm phù hợp nhé!",
+      "error": null
+    },
+    {
+      "id": "product-16",
+      "passed": true,
+      "traceId": "1fa0ce02-bc08-4363-ba78-6e7371570eab",
+      "route": "rag",
+      "latencyMs": 12036,
+      "tokens": 1194,
+      "promptSourceIds": [
+        "policy:giao-hang:1",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3",
+        "policy:giao-hang:2",
+        "policy:chinh-sach-tra-hang-va-hoan-tien:1"
+      ],
+      "citedSourceIds": [
+        "policy:giao-hang:1"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev miễn phí giao hàng toàn quốc cho đơn hàng từ 799.000 VNĐ trở lên. Với đơn dưới 799.000 VNĐ, phí giao hàng tiêu chuẩn là 30.000 VNĐ.",
+      "error": null
+    },
+    {
+      "id": "policy-01",
+      "passed": true,
+      "traceId": "84c4963d-0ae9-436c-9fa9-3b51d2b54804",
+      "route": "rag",
+      "latencyMs": 1751,
+      "tokens": 870,
+      "promptSourceIds": [
+        "policy:giao-hang:1"
+      ],
+      "citedSourceIds": [
+        "policy:giao-hang:1"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Đối với đơn hàng dưới 799.000 VNĐ, phí giao hàng tiêu chuẩn là 30.000 VNĐ bạn nhé.",
+      "error": null
+    },
+    {
+      "id": "policy-02",
+      "passed": true,
+      "traceId": "e74b8147-4815-49f9-92b2-b75888b95869",
+      "route": "rag",
+      "latencyMs": 1804,
+      "tokens": 1072,
+      "promptSourceIds": [
+        "policy:giao-hang:3",
+        "policy:giao-hang:1",
+        "policy:thong-tin-cua-hang:1"
+      ],
+      "citedSourceIds": [
+        "policy:giao-hang:3"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện chỉ giao hàng đến các địa chỉ tại Việt Nam và chưa hỗ trợ giao hàng quốc tế. Nếu bạn cần thêm thông tin về giao hàng trong nước, shop sẵn sàng hỗ trợ thêm nhé!",
+      "error": null
+    },
+    {
+      "id": "policy-03",
+      "passed": true,
+      "traceId": "d4baf8f7-b539-4aff-bb5f-3012bc78bd4e",
+      "route": "rag",
+      "latencyMs": 2210,
+      "tokens": 1367,
+      "promptSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:1",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:2",
+        "policy:huong-dan-chon-size:3"
+      ],
+      "citedSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:1"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev rất tiếc, bạn chỉ có thể đổi size hoặc đổi sang sản phẩm khác trong vòng 7 ngày kể từ ngày nhận hàng. Sau 10 ngày, shop chưa hỗ trợ đổi size theo chính sách hiện tại. Nếu cần thêm thông tin, bạn vui lòng liên hệ trực tiếp với cửa hàng nhé.",
+      "error": null
+    },
+    {
+      "id": "policy-04",
+      "passed": true,
+      "traceId": "7d29a932-2928-4de6-83bb-c67e19f16688",
+      "route": "rag",
+      "latencyMs": 2186,
+      "tokens": 1127,
+      "promptSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:2"
+      ],
+      "citedSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev xin thông báo tất đã mở bao bì không áp dụng đổi trả. Nếu bạn cần thêm thông tin về các sản phẩm khác hoặc chính sách đổi hàng, shop luôn sẵn sàng hỗ trợ.",
+      "error": null
+    },
+    {
+      "id": "policy-05",
+      "passed": true,
+      "traceId": "3091afe6-792b-4687-95af-88cea5275d58",
+      "route": "rag",
+      "latencyMs": 1704,
+      "tokens": 1300,
+      "promptSourceIds": [
+        "policy:dat-hang-va-thanh-toan:2",
+        "policy:dat-hang-va-thanh-toan:1",
+        "policy:giao-hang:4",
+        "policy:dat-hang-va-thanh-toan:3",
+        "policy:thong-tin-cua-hang:1"
+      ],
+      "citedSourceIds": [
+        "policy:dat-hang-va-thanh-toan:2"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hỗ trợ các phương thức thanh toán gồm: thanh toán khi nhận hàng (COD), chuyển khoản ngân hàng và thanh toán bằng thẻ qua cổng thanh toán. Hiện tại, shop chưa áp dụng hình thức trả góp.",
+      "error": null
+    },
+    {
+      "id": "policy-06",
+      "passed": true,
+      "traceId": "a2052f41-d7dc-4468-927a-532b5a64ab25",
+      "route": "rag",
+      "latencyMs": 1438,
+      "tokens": 1323,
+      "promptSourceIds": [
+        "policy:chinh-sach-tra-hang-va-hoan-tien:3",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:2",
+        "policy:giao-hang:4",
+        "policy:thong-tin-cua-hang:1"
+      ],
+      "citedSourceIds": [
+        "policy:chinh-sach-tra-hang-va-hoan-tien:3"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev không hoàn tiền trong trường hợp khách không thích sản phẩm. Nếu sản phẩm còn đủ điều kiện đổi, bạn có thể đổi size hoặc đổi sang sản phẩm khác theo chính sách đổi hàng của shop.",
+      "error": null
+    },
+    {
+      "id": "policy-07",
+      "passed": true,
+      "traceId": "87ece06d-7b9f-4c04-875c-dd16244e3aea",
+      "route": "rag",
+      "latencyMs": 1767,
+      "tokens": 924,
+      "promptSourceIds": [
+        "policy:chinh-sach-tra-hang-va-hoan-tien:2"
+      ],
+      "citedSourceIds": [
+        "policy:chinh-sach-tra-hang-va-hoan-tien:2"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev sẽ xử lý hoàn tiền trong vòng 3–5 ngày làm việc sau khi nhận và kiểm tra hàng trả. Nếu bạn thanh toán COD, shop sẽ hoàn tiền qua chuyển khoản; nếu bạn đã thanh toán trước, tiền sẽ được hoàn về phương thức phù hợp sau khi xác minh.",
+      "error": null
+    },
+    {
+      "id": "policy-08",
+      "passed": true,
+      "traceId": "fc22839c-1ef9-4309-903f-eb03bed157c2",
+      "route": "rag",
+      "latencyMs": 1750,
+      "tokens": 1283,
+      "promptSourceIds": [
+        "policy:giao-hang:4",
+        "policy:dat-hang-va-thanh-toan:1",
+        "policy:dat-hang-va-thanh-toan:3",
+        "policy:chinh-sach-tra-hang-va-hoan-tien:2",
+        "policy:dat-hang-va-thanh-toan:2"
+      ],
+      "citedSourceIds": [
+        "policy:giao-hang:4"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev cho phép bạn kiểm tra đúng mã sản phẩm, màu sắc và size trên nhãn trước khi thanh toán COD. Tuy nhiên, bạn chưa được thử sản phẩm hoặc bóc tem khi chưa hoàn tất thanh toán nhé.",
+      "error": null
+    },
+    {
+      "id": "policy-09",
+      "passed": true,
+      "traceId": "137f8c10-8161-42f2-9bfe-d8677b3974ee",
+      "route": "rag",
+      "latencyMs": 1658,
+      "tokens": 1334,
+      "promptSourceIds": [
+        "policy:huong-dan-chon-size:3",
+        "policy:thong-tin-cua-hang:3",
+        "policy:huong-dan-chon-size:2",
+        "policy:huong-dan-chon-size:1",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3"
+      ],
+      "citedSourceIds": [
+        "policy:huong-dan-chon-size:3"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Để được tư vấn size qua chat tại Fashion Tomodev, bạn chỉ cần cung cấp chiều cao, cân nặng, số đo cơ bản và kiểu mặc mong muốn. Lưu ý, tư vấn size chỉ mang tính chất tham khảo vì thể trạng và sở thích mặc của mỗi người có thể khác nhau.",
+      "error": null
+    },
+    {
+      "id": "policy-10",
+      "passed": true,
+      "traceId": "7aa21c89-4cb6-4620-b2c7-5aa8b5b707d4",
+      "route": "rag",
+      "latencyMs": 2015,
+      "tokens": 1369,
+      "promptSourceIds": [
+        "policy:bao-quan-san-pham:2",
+        "policy:bao-quan-san-pham:3",
+        "policy:bao-quan-san-pham:1",
+        "product:QT-005",
+        "product:QT-006"
+      ],
+      "citedSourceIds": [
+        "policy:bao-quan-san-pham:2"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev khuyên bạn nên lộn trái sản phẩm denim khi giặt, hạn chế giặt quá thường xuyên và không dùng máy sấy nhiệt cao. Lưu ý, màu denim có thể phai nhẹ trong các lần giặt đầu. Bạn nên áp dụng các cách này để giữ quần áo denim bền màu và đẹp lâu hơn.",
+      "error": null
+    },
+    {
+      "id": "combined-01",
+      "passed": true,
+      "traceId": "4d89d07b-424e-4f3c-aa3e-2691e1f4cfa1",
+      "route": "rag",
+      "latencyMs": 2275,
+      "tokens": 1459,
+      "promptSourceIds": [
+        "product:PL-002",
+        "product:PL-003",
+        "product:PL-005",
+        "product:PL-006",
+        "policy:giao-hang:1"
+      ],
+      "citedSourceIds": [
+        "product:PL-002",
+        "policy:giao-hang:1"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo polo pique trắng (PL-002) hiện có giá 389.000 VNĐ. Đơn hàng từ 799.000 VNĐ sẽ được miễn phí giao hàng toàn quốc, còn đơn dưới 799.000 VNĐ sẽ áp dụng phí giao hàng tiêu chuẩn 30.000 VNĐ. Nếu bạn cần thêm thông tin về sản phẩm hoặc chính sách, shop sẵn sàng hỗ trợ!",
+      "error": null
+    },
+    {
+      "id": "combined-02",
+      "passed": false,
+      "traceId": "5b36d3b4-0a8d-440a-8a9e-79069b2e7a91",
+      "route": "rag",
+      "latencyMs": 1884,
+      "tokens": 1434,
+      "promptSourceIds": [
+        "product:SM-001",
+        "product:SM-002",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:1",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3"
+      ],
+      "citedSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:1"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 0.5,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hỗ trợ đổi size cho Áo sơ mi Oxford trắng (SM-001) trong vòng 7 ngày kể từ ngày nhận hàng. Sản phẩm cần còn nguyên tem, chưa giặt, chưa sử dụng, không có mùi lạ và có hóa đơn hoặc mã đơn hàng để được đổi size bạn nhé.",
+      "error": null
+    },
+    {
+      "id": "unknown-01",
+      "passed": true,
+      "traceId": "4ec0d9c6-c4b2-4bf4-b905-5ac934d96700",
+      "route": "rag",
+      "latencyMs": 1754,
+      "tokens": 1450,
+      "promptSourceIds": [
+        "product:QT-007",
+        "product:QT-009",
+        "product:PL-005",
+        "product:QT-008",
+        "policy:thong-tin-cua-hang:1"
+      ],
+      "citedSourceIds": [],
+      "validation": "insufficient",
+      "recallAt5": null,
+      "citationValid": true,
+      "citationCoverage": null,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev hiện chưa có thông tin về sản phẩm giày thể thao. Nếu bạn cần thêm thông tin hoặc muốn được tư vấn về các sản phẩm khác như áo, quần hoặc phụ kiện, shop rất sẵn lòng hỗ trợ bạn nhé!",
+      "error": null
+    },
+    {
+      "id": "unknown-02",
+      "passed": true,
+      "traceId": "2a9316ea-0b5f-4111-a307-7239cc21a469",
+      "route": "guard",
+      "latencyMs": 30,
+      "tokens": 0,
+      "promptSourceIds": [],
+      "citedSourceIds": [],
+      "validation": "prompt_injection",
+      "recallAt5": null,
+      "citationValid": null,
+      "citationCoverage": null,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Mình chỉ hỗ trợ thông tin sản phẩm, chính sách, tra đơn và yêu cầu đổi size/trả hàng của Fashion Tomodev, nên không thể thực hiện yêu cầu này. Bạn cần hỗ trợ gì về sản phẩm hoặc đơn hàng không?",
+      "error": null
+    },
+    {
+      "id": "followup-01",
+      "passed": true,
+      "traceId": "b8b94d8d-31e4-4306-89c0-54c169d833ca",
+      "route": "rag",
+      "latencyMs": 3582,
+      "tokens": 2908,
+      "promptSourceIds": [
+        "product:PL-002",
+        "product:PL-003",
+        "product:PL-001",
+        "policy:huong-dan-chon-size:1",
+        "policy:huong-dan-chon-size:2"
+      ],
+      "citedSourceIds": [
+        "product:PL-002"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo polo pique trắng (PL-002) hiện còn đủ size, bao gồm cả size L. Nếu bạn cần tư vấn chọn size phù hợp, shop có thể hướng dẫn thêm nhé!",
+      "error": null
+    },
+    {
+      "id": "followup-02",
+      "passed": true,
+      "traceId": "acf86e72-2894-44a4-a9b7-f923062f26fe",
+      "route": "rag",
+      "latencyMs": 3679,
+      "tokens": 2997,
+      "promptSourceIds": [
+        "product:SM-003",
+        "product:SM-004",
+        "product:SM-007",
+        "product:SM-008",
+        "product:SM-002"
+      ],
+      "citedSourceIds": [
+        "product:SM-003"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Áo sơ mi linen be dáng relaxed (SM-003) có giá 559.000 VNĐ.",
+      "error": null
+    },
+    {
+      "id": "followup-03",
+      "passed": true,
+      "traceId": "22541afe-efb3-4518-b6a0-3aff658adf3d",
+      "route": "rag",
+      "latencyMs": 3601,
+      "tokens": 2807,
+      "promptSourceIds": [
+        "policy:bao-quan-san-pham:2",
+        "policy:bao-quan-san-pham:3",
+        "policy:bao-quan-san-pham:1",
+        "product:PL-004",
+        "product:KN-002"
+      ],
+      "citedSourceIds": [
+        "policy:bao-quan-san-pham:3"
+      ],
+      "validation": "valid",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 1,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Với đồ dệt kim, bạn nên giặt tay hoặc chọn chế độ nhẹ khi giặt máy, không vắt xoắn và nên phơi ngang để tránh dão vai và biến dạng áo. Fashion Tomodev khuyến khích bạn áp dụng các cách này để giữ đồ dệt kim luôn đẹp và bền.",
+      "error": null
+    },
+    {
+      "id": "combined-03",
+      "passed": false,
+      "traceId": "76d3ea0a-c80d-4d96-9679-38632a1ffc1a",
+      "route": "agent",
+      "latencyMs": 8585,
+      "tokens": 14062,
+      "promptSourceIds": [
+        "policy:chinh-sach-doi-size-va-doi-san-pham:3",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:2",
+        "policy:chinh-sach-tra-hang-va-hoan-tien:3",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:4",
+        "policy:chinh-sach-tra-hang-va-hoan-tien:2",
+        "policy:chinh-sach-doi-size-va-doi-san-pham:1",
+        "policy:huong-dan-chon-size:3",
+        "policy:huong-dan-chon-size:1"
+      ],
+      "citedSourceIds": [],
+      "validation": "insufficient",
+      "recallAt5": 1,
+      "citationValid": true,
+      "citationCoverage": 0,
+      "insufficientCorrect": false,
+      "missingKeywords": [],
+      "answer": "Khi đổi áo polo PL-002 sang size khác, nếu đây là lần đổi size đầu tiên và cửa hàng đã tư vấn sai size cho bạn, cửa hàng sẽ hỗ trợ phí vận chuyển một chiều. Nếu bạn đổi size theo nhu cầu cá nhân (không phải do tư vấn sai), bạn sẽ thanh toán phí vận chuyển phát sinh. Ngoài ra, sản phẩm đổi cần còn nguyên tem, chưa sử dụng, chưa giặt, không có mùi lạ và còn trong thời hạn 7 ngày kể từ ngày nhận hàng.\n\nNếu bạn cần hỗ trợ đổi size, vui lòng cung cấp mã đơn hàng để mình kiểm tra chi tiết cho bạn nhé!",
+      "error": null
+    },
+    {
+      "id": "unknown-03",
+      "passed": true,
+      "traceId": "54c1a1d1-dfdb-42ac-adcb-00a505e83064",
+      "route": "rag",
+      "latencyMs": 441,
+      "tokens": 0,
+      "promptSourceIds": [],
+      "citedSourceIds": [],
+      "validation": "no_sources",
+      "recallAt5": null,
+      "citationValid": null,
+      "citationCoverage": null,
+      "insufficientCorrect": true,
+      "missingKeywords": [],
+      "answer": "Fashion Tomodev chưa có đủ thông tin trong dữ liệu hiện có để trả lời chính xác câu hỏi này.",
+      "error": null
+    }
+  ]
+}

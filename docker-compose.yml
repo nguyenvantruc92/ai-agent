@@ -1,0 +1,67 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: fashion
+      POSTGRES_PASSWORD: fashion
+      POSTGRES_DB: fashion
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fashion -d fashion"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    env_file: .env
+    command: sh -c "pnpm db:migrate && pnpm start"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/trash:/app/data/trash
+      - ./data/logs:/app/data/logs
+      - ./data/eval-results:/app/data/eval-results
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+
+  worker:
+    build: .
+    env_file: .env
+    command: sh -c "pnpm db:migrate && pnpm worker"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # MCP tools (Streamable HTTP at http://mcp:3001/mcp). No published port: only
+  # web/worker on the Compose network can reach it, never the host or the tunnel.
+  mcp:
+    build: .
+    env_file: .env
+    environment:
+      SERVICE_NAME: mcp
+    command: pnpm mcp
+    volumes:
+      - ./data/logs:/app/data/logs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    # cloudflared reads TUNNEL_TOKEN itself; the token stays out of the command line.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [web]
+
+volumes:
+  postgres_data:

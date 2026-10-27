@@ -1,0 +1,15 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env
+data/uploads/*
+!data/uploads/.gitkeep
+data/trash/*
+!data/trash/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/eval-results/*
+!data/eval-results/.gitkeep
+
+# Course slides are reference material, not part of the project
+slides/
