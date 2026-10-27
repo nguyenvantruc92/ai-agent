@@ -5,7 +5,7 @@ Trợ lý tiếng Việt cho cửa hàng thời trang nam:
 - **Week 6:** chatbot RAG cho catalog và FAQ/chính sách. Dữ liệu được index vào PostgreSQL + pgvector; câu trả lời chỉ được hoàn tất khi mọi citation thuộc tập chunks đã đưa vào prompt.
 - **Week 7:** AI Agent (LangGraph + MCP) tra đơn hàng giả lập và tạo yêu cầu đổi size/trả hàng. Mọi yêu cầu ghi dữ liệu dừng tại `interrupt()` chờ nhân viên duyệt.
 
-Tài liệu khác: [kịch bản test/demo](docs/demo-script.md) · [sơ đồ agent graph](docs/agent-graph.md) · [ghi chú MCP](docs/mcp-notes.md).
+Tài liệu khác: [kịch bản test/demo](docs/demo-script.md) · [sơ đồ agent graph](docs/agent-graph.md) · [ghi chú MCP](docs/mcp-notes.md) · [tech stack và tham số provider](docs/tech-stack.md).
 
 ---
 
