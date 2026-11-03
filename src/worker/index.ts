@@ -5,7 +5,9 @@ import { embedMany } from 'ai';
 import { sql } from '@/db/client';
 import { env } from '@/lib/env';
 import { uploadRoot } from '@/features/knowledge/files';
-import { parseCatalog, parsePolicyTable, parsePolicyText } from '@/features/knowledge/parser';
+import { buildCatalogChunks } from '@/features/catalog/chunks';
+import { catalogMime } from '@/features/catalog/sync';
+import { parsePolicyTable, parsePolicyText } from '@/features/knowledge/parser';
 import { extractPdf } from '@/features/knowledge/pdf';
 import type { ParsedChunk } from '@/features/knowledge/types';
 import { openai } from '@/lib/openai';
@@ -14,6 +16,7 @@ import { cleanupAgentState, expireApprovals } from '@/worker/maintenance';
 
 type Job = { id: string; document_id: string; document_version_id: string; version: number; storage_key: string; mime_type: string };
 
+const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const vectorLiteral = (vector: number[]) => `[${vector.join(',')}]`;
 
@@ -39,8 +42,10 @@ async function claimJob(): Promise<Job | undefined> {
 }
 
 async function parse(job: Job): Promise<ParsedChunk[]> {
+  // Product chunks come from the products table, so editing a product never needs a file.
+  if (job.mime_type === catalogMime) return buildCatalogChunks();
+  if (job.mime_type === xlsxMime) throw new Error('Catalog XLSX không còn được index trực tiếp; hãy import XLSX để nạp vào danh sách sản phẩm.');
   const buffer = await readFile(join(uploadRoot, job.storage_key));
-  if (job.mime_type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return parseCatalog(buffer);
   const { text, items } = await extractPdf(buffer);
   const updatedAt = text.match(/Cập nhật\s+(\d{4}-\d{2}-\d{2})/)?.[1] ?? new Date().toISOString().slice(0, 10);
   const tableChunks = parsePolicyTable(items, updatedAt);
@@ -113,6 +118,10 @@ async function processJob(job: Job) {
       // Activation is the last step, so chat switches versions atomically.
       await tx`UPDATE knowledge_documents SET status = 'ready', active_version_id = ${job.document_version_id}, updated_at = now() WHERE id = ${job.document_id}`;
       await tx`UPDATE ingestion_jobs SET status = 'completed', finished_at = now(), error = NULL WHERE id = ${job.id}`;
+      // Legacy XLSX documents carried the same product: source ids. Retire them only once the DB-backed catalog is live.
+      if (job.mime_type === catalogMime) {
+        await tx`UPDATE knowledge_documents SET status = 'deleted', deleted_at = now(), updated_at = now() WHERE mime_type = ${xlsxMime} AND deleted_at IS NULL`;
+      }
     });
     workerLogger.info({ trace_id: traceId, stage: 'ingestion.completed', jobId: job.id, chunks: chunks.length, embedded, reused: reusedCount, embeddingTokens: tokens, latencyMs: Date.now() - startedAt });
   } catch (error) {

@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { PostgresStore } from '@langchain/langgraph-checkpoint-postgres/store';
 import { postgresApprovals } from '@/features/agent/approvals';
+import { postgresConfirmations } from '@/features/agent/confirmations';
 import { mcpGateway } from '@/features/agent/gateway';
 import { compileAgentGraph, type AgentGraph, type AgentModel } from '@/features/agent/graph';
 import { agentTools } from '@/features/agent/tools';
@@ -49,7 +50,7 @@ export function getAgentRuntime(): Runtime {
   if (!holder.fashionAgentRuntime) {
     const checkpointer = createCheckpointer();
     const store = createStore();
-    const graph = compileAgentGraph({ model: openAiAgentModel, gateway: mcpGateway, approvals: postgresApprovals, answerWithRag, now: () => new Date() }, checkpointer, store);
+    const graph = compileAgentGraph({ model: openAiAgentModel, gateway: mcpGateway, approvals: postgresApprovals, confirmations: postgresConfirmations, answerWithRag, now: () => new Date() }, checkpointer, store);
     holder.fashionAgentRuntime = { graph, checkpointer, store };
   }
   return holder.fashionAgentRuntime;

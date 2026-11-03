@@ -1,37 +1,5 @@
-import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
-import { parseCatalog, parsePolicyTable, parsePolicyText, type PdfTextItem } from '@/features/knowledge/parser';
-
-function workbook(rows: Record<string, unknown>[], sheet = 'Catalog sản phẩm') {
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), sheet);
-  return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-}
-
-const product = { product_id: 'PL-002', product_name: 'Áo polo pique trắng', category: 'Áo polo', price_vnd: 389000, description: 'Áo polo trắng cơ bản', sizes: 'S, M, L', colors: 'Trắng', material: '100% cotton pique', stock_status: 'Còn hàng', updated_at: '2026-10-27' };
-
-describe('parseCatalog', () => {
-  it('creates one labelled chunk per product row', () => {
-    const [chunk, ...rest] = parseCatalog(workbook([product]));
-    expect(rest).toHaveLength(0);
-    expect(chunk.sourceId).toBe('product:PL-002');
-    expect(chunk.content).toContain('Giá: 389.000 VNĐ');
-    expect(chunk.content).toContain('Size: S, M, L');
-    expect(chunk.metadata).toMatchObject({ category: 'Áo polo', updated_at: '2026-10-27' });
-  });
-
-  it('rejects rows missing a required column', () => {
-    expect(() => parseCatalog(workbook([{ ...product, price_vnd: '' }]))).toThrow('price_vnd');
-  });
-
-  it('only reads the catalog sheet', () => {
-    expect(() => parseCatalog(workbook([product], 'Sheet1'))).toThrow('Catalog sản phẩm');
-  });
-
-  it('gives identical content the same hash', () => {
-    expect(parseCatalog(workbook([product]))[0].contentHash).toBe(parseCatalog(workbook([product]))[0].contentHash);
-  });
-});
+import { parsePolicyTable, parsePolicyText, type PdfTextItem } from '@/features/knowledge/parser';
 
 describe('parsePolicyText', () => {
   it('creates stable source ids by heading', () => {

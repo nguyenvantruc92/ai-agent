@@ -22,6 +22,10 @@ const schema = z.object({
   MAX_HISTORY_TURNS: z.coerce.number().int().min(0).default(10),
   MAX_HISTORY_MESSAGES: z.coerce.number().int().min(0).default(20),
   MAX_USER_MESSAGE_CHARS: z.coerce.number().int().positive().default(2000),
+  PRODUCT_IMAGE_MAX_BYTES: z.coerce.number().int().positive().default(2_097_152),
+  // Shipping policy shown on the storefront; must match the FAQ (free from 799.000đ, otherwise 30.000đ).
+  SHIPPING_FEE_VND: z.coerce.number().int().min(0).default(30_000),
+  FREE_SHIPPING_FROM_VND: z.coerce.number().int().min(0).default(799_000),
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
   CHAT_RATE_LIMIT: z.coerce.number().int().positive().default(30),
   CHAT_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(600),

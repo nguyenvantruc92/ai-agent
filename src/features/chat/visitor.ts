@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { NextResponse } from 'next/server';
 import { sql } from '@/db/client';
 
@@ -9,6 +9,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /** Anonymous visitor identity from an HttpOnly cookie; `persist` sets it on responses when new. */
 export async function visitorSession() {
   const jar = await cookies();
+  const secure = (await headers()).get('x-forwarded-proto') === 'https';
   const cookieValue = jar.get(visitorCookie)?.value;
   const existing = cookieValue && uuidPattern.test(cookieValue) ? cookieValue : undefined;
   const visitorId = existing ?? randomUUID();
@@ -16,7 +17,7 @@ export async function visitorSession() {
     visitorId,
     isNew: !existing,
     persist<T extends NextResponse>(response: T) {
-      if (!existing) response.cookies.set(visitorCookie, visitorId, { httpOnly: true, sameSite: 'lax', secure: true, path: '/', maxAge: 60 * 60 * 24 * 30 });
+      if (!existing) response.cookies.set(visitorCookie, visitorId, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: 60 * 60 * 24 * 30 });
       return response;
     },
   };

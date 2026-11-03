@@ -4,13 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { createDocument, listDocuments, reindexDocument } from '@/features/knowledge/repository';
 import { saveUpload, validateUpload } from '@/features/knowledge/files';
 import { sql } from '@/db/client';
+import { seedCatalogIfEmpty } from '@/features/catalog/import';
+import { queueCatalogReindex } from '@/features/catalog/sync';
 
-const seeds = [
-  'bang_gia_san_pham_thoi_trang_nam.xlsx',
-  'faq_chinh_sach_cua_hang.pdf',
-];
+// Products are seeded into the database by `db:migrate`; only the policy PDF is a knowledge file.
+const seeds = ['faq_chinh_sach_cua_hang.pdf'];
 
 async function main() {
+  if (await seedCatalogIfEmpty()) console.log('Imported demo catalog');
+  console.log((await queueCatalogReindex()).queued ? 'Queued catalog' : 'Catalog already queued');
   const existing = await listDocuments();
   for (const filename of seeds) {
     const current = existing.find((document) => document.original_filename === filename);

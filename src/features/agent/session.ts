@@ -3,7 +3,8 @@ import { AIMessage, HumanMessage, type BaseMessage } from '@langchain/core/messa
 import { Command } from '@langchain/langgraph';
 import { sql } from '@/db/client';
 import { decideApproval, getApproval, pendingApprovalForThread, type ApprovalStatus } from '@/features/agent/approvals';
-import type { AgentGraph, ApprovalInterrupt, ApprovalResume } from '@/features/agent/graph';
+import { decideConfirmation, getConfirmation, isExpired, pendingConfirmationForThread } from '@/features/agent/confirmations';
+import type { AgentGraph, ApprovalInterrupt, ApprovalResume, ConfirmInterrupt, ConfirmResume } from '@/features/agent/graph';
 import { getAgentRuntime } from '@/features/agent/runtime';
 import { hashVisitorId } from '@/features/chat/generation';
 import type { FinalAnswer, SourceRef } from '@/features/chat/rag-answer';
@@ -15,7 +16,8 @@ type Common = { traceId: string; toolCalls: string[]; messageId: string };
 export type TurnResult =
   | (Common & { kind: 'answer'; answer: FinalAnswer })
   | (Common & { kind: 'pending'; approval: ApprovalInterrupt; message: string })
-  | { kind: 'blocked'; traceId: string; approvalId: string; message: string };
+  | (Common & { kind: 'confirm'; confirmation: ConfirmInterrupt; message: string })
+  | { kind: 'blocked'; traceId: string; approvalId?: string; confirmationId?: string; message: string };
 
 export type StoredMessage = {
   id: string;
@@ -23,7 +25,7 @@ export type StoredMessage = {
   content: string;
   citations: string[];
   insufficient_information: boolean;
-  metadata: { kind?: 'answer' | 'approval_pending' | 'approval_result' | 'blocked'; sources?: SourceRef[]; traceId?: string; approvalId?: string; route?: string };
+  metadata: { kind?: 'answer' | 'approval_pending' | 'approval_result' | 'blocked' | 'confirmation_pending' | 'confirmation_decision'; sources?: SourceRef[]; traceId?: string; approvalId?: string; confirmationId?: string; details?: string[]; route?: string };
   created_at: Date;
 };
 
@@ -44,6 +46,10 @@ export async function threadMessages(threadId: string) {
 const pendingText = (approval: ApprovalInterrupt) =>
   `Mình đã kiểm tra đơn hàng và điều kiện đổi/trả: ${approval.summary}. Yêu cầu đã được chuyển cho nhân viên duyệt; Fashion Tomodev sẽ phản hồi ngay tại cuộc trò chuyện này khi có kết quả.`;
 
+/** The card text the customer sees above the Xác nhận / Huỷ buttons; fixed wording, not model-written. */
+export const confirmationText = (confirmation: ConfirmInterrupt) =>
+  `${confirmation.action === 'checkout' ? 'Bạn kiểm tra lại đơn hàng dưới đây rồi bấm Xác nhận để đặt hàng nhé:' : 'Bạn xác nhận hủy đơn sau nhé:'}\n${confirmation.details.map((line) => `• ${line}`).join('\n')}`;
+
 /** Tool names the agent called since the latest user message (for traces and evals). */
 function toolCallsThisTurn(messages: BaseMessage[]) {
   const start = messages.findLastIndex((message) => HumanMessage.isInstance(message));
@@ -57,7 +63,14 @@ async function runAndFinish(graph: AgentGraph, input: Parameters<AgentGraph['str
 
   const state = await graph.getState(config);
   const toolCalls = toolCallsThisTurn(state.values.messages ?? []);
-  const interrupt = state.tasks.flatMap((task) => task.interrupts ?? []).map((item) => item.value as ApprovalInterrupt).find(Boolean);
+  const waiting = state.tasks.flatMap((task) => task.interrupts ?? []).map((item) => item.value as ApprovalInterrupt | ConfirmInterrupt).find(Boolean);
+  if (waiting && 'confirmationId' in waiting) {
+    const message = confirmationText(waiting);
+    const messageId = await saveMessage(threadId, 'assistant', message, { citations: [], metadata: { kind: 'confirmation_pending', confirmationId: waiting.confirmationId, details: waiting.details, traceId } });
+    logger.info({ trace_id: traceId, stage: 'agent.pending_confirmation', confirmationId: waiting.confirmationId, action: waiting.action, toolCalls });
+    return { kind: 'confirm', traceId, toolCalls, messageId, confirmation: waiting, message };
+  }
+  const interrupt = waiting as ApprovalInterrupt | undefined;
   if (interrupt) {
     const message = pendingText(interrupt);
     const messageId = await saveMessage(threadId, 'assistant', message, { citations: [], metadata: { kind: 'approval_pending', approvalId: interrupt.approvalId, traceId } });
@@ -80,6 +93,14 @@ export async function runChatTurn(input: { threadId: string; visitorId: string; 
   if (pending) {
     return { kind: 'blocked', traceId: input.traceId, approvalId: pending.id, message: `Yêu cầu "${pending.summary}" đang chờ nhân viên duyệt. Bạn vui lòng đợi kết quả trước khi gửi yêu cầu mới trong cuộc trò chuyện này.` };
   }
+  const confirmation = await pendingConfirmationForThread(input.threadId);
+  if (confirmation) {
+    if (!isExpired(confirmation)) {
+      return { kind: 'blocked', traceId: input.traceId, confirmationId: confirmation.id, message: `Bạn đang có một thao tác chờ xác nhận ("${confirmation.summary}"). Vui lòng bấm Xác nhận hoặc Huỷ trước khi tiếp tục.` };
+    }
+    // The customer walked away: close the old question (the graph tells them it was not done) and carry on with the new message.
+    await decideAndResumeConfirmation({ confirmationId: confirmation.id, threadId: input.threadId, decision: 'expired', traceId: input.traceId, signal: input.signal });
+  }
   await saveMessage(input.threadId, 'user', input.message);
   const { graph } = getAgentRuntime();
   return runAndFinish(graph, {
@@ -87,6 +108,7 @@ export async function runChatTurn(input: { threadId: string; visitorId: string; 
     userId: hashVisitorId(input.visitorId),
     route: null,
     finalAnswer: null,
+    awaiting: null,
     turnSources: [],
     modelCalls: 0,
     toolCalls: 0,
@@ -117,4 +139,52 @@ export async function decideAndResume(input: { approvalId: string; decision: Exc
   logger.info({ trace_id: input.traceId, stage: 'agent.resume', approvalId: input.approvalId, decision: input.decision, threadId: approval.thread_id });
   const result = await runAndFinish(graph, new Command({ resume }), approval.thread_id, input.traceId, 'approval_result', undefined);
   return { resumed: true as const, approval: current!, result };
+}
+
+export class ConfirmationConflictError extends Error {}
+
+const resuming = new Set<string>();
+
+type PreparedDecision = { confirmationId: string; threadId: string; decision: ConfirmResume['decision']; status: string };
+
+/**
+ * Step 1: records the customer's decision (pending → decided, atomic). Throws ConfirmationConflictError when it
+ * cannot apply. The caller must already have shown that `threadId` belongs to the requesting visitor.
+ */
+export async function recordConfirmationDecision(input: { confirmationId: string; threadId: string; decision: ConfirmResume['decision'] }): Promise<PreparedDecision> {
+  const row = await getConfirmation(input.confirmationId);
+  if (!row || row.thread_id !== input.threadId) throw new ConfirmationConflictError('Không tìm thấy thao tác cần xác nhận.');
+  if (row.status === 'pending') {
+    let decided = await decideConfirmation(row.id, input.decision);
+    // Confirming after the time ran out turns into "expired" instead of acting on a stale question.
+    if (!decided && input.decision === 'confirmed' && isExpired(row)) decided = await decideConfirmation(row.id, 'expired');
+    if (!decided) throw new ConfirmationConflictError('Thao tác này vừa được xử lý.');
+    if (input.decision !== 'expired') await saveMessage(input.threadId, 'user', input.decision === 'confirmed' ? 'Xác nhận' : 'Huỷ', { metadata: { kind: 'confirmation_decision', confirmationId: row.id } });
+  }
+  const current = (await getConfirmation(row.id))!;
+  // executed/failed mean "confirmed, then ran": a retry after a failed resume replays the stored result.
+  const decision: ConfirmResume['decision'] = current.status === 'cancelled' || current.status === 'expired' ? current.status : 'confirmed';
+  if (input.decision === 'cancelled' && decision !== 'cancelled') throw new ConfirmationConflictError(`Thao tác này đã ở trạng thái ${current.status}.`);
+  if (input.decision === 'confirmed' && decision === 'cancelled') throw new ConfirmationConflictError('Thao tác này đã được huỷ.');
+  return { confirmationId: row.id, threadId: input.threadId, decision, status: current.status };
+}
+
+/** Step 2: resumes the paused thread from its checkpoint (the LLM then tells the customer the outcome). */
+export async function resumeConfirmation(prepared: PreparedDecision, traceId: string, signal?: AbortSignal, onEvent?: (event: TurnEvent) => void) {
+  const { graph } = getAgentRuntime();
+  const config = { configurable: { thread_id: prepared.threadId } };
+  const state = await graph.getState(config);
+  const waiting = state.tasks.flatMap((task) => task.interrupts ?? []).some((item) => (item.value as ConfirmInterrupt).confirmationId === prepared.confirmationId);
+  if (!waiting) return { resumed: false as const, status: prepared.status };
+  if (resuming.has(prepared.threadId)) throw new ConfirmationConflictError('Yêu cầu đang được xử lý.');
+  resuming.add(prepared.threadId);
+  try {
+    logger.info({ trace_id: traceId, stage: 'agent.resume_confirmation', confirmationId: prepared.confirmationId, decision: prepared.decision, threadId: prepared.threadId });
+    const result = await runAndFinish(graph, new Command({ resume: { decision: prepared.decision } satisfies ConfirmResume }), prepared.threadId, traceId, 'answer', signal, onEvent);
+    return { resumed: true as const, status: prepared.status, result };
+  } finally { resuming.delete(prepared.threadId); }
+}
+
+export async function decideAndResumeConfirmation(input: { confirmationId: string; threadId: string; decision: ConfirmResume['decision']; traceId: string; signal?: AbortSignal; onEvent?: (event: TurnEvent) => void }) {
+  return resumeConfirmation(await recordConfirmationDecision(input), input.traceId, input.signal, input.onEvent);
 }

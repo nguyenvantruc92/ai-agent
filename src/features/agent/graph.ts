@@ -4,14 +4,17 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage }
 import { Annotation, END, interrupt, messagesStateReducer, START, StateGraph, type BaseCheckpointSaver, type BaseStore, type LangGraphRunnableConfig } from '@langchain/langgraph';
 import type { ModelMessage } from 'ai';
 import type { ApprovalStore } from '@/features/agent/approvals';
+import type { ConfirmationAction, ConfirmationStore } from '@/features/agent/confirmations';
 import type { ToolGateway } from '@/features/agent/gateway';
 import { chooseRoute, type Route } from '@/features/agent/router';
-import { exchangeArgs, finalAnswerArgs, readTools, returnArgs, writeTools } from '@/features/agent/tools';
+import { cancelDetails, cartFingerprint, checkoutDetails, orderFingerprint, type CheckoutPayload } from '@/features/agent/shop-types';
+import { cancelOrderArgs, cartLineArgs, checkoutArgs, confirmTools, finalAnswerArgs, lookupOrderArgs, parseExchangeArgs, parseReturnArgs, readTools, searchProductsArgs, cartTools, writeTools } from '@/features/agent/tools';
 import type { answerWithRag, FinalAnswer, SourceRef } from '@/features/chat/rag-answer';
 import { enforceGroundedNumbers } from '@/features/chat/grounding';
 import { injectionRefusal } from '@/features/chat/guardrails';
 import { validateAnswer } from '@/features/chat/validation';
 import { checkRequest, returnReasonStated } from '@/features/orders/policy';
+import { checkoutInput, normalizePhone } from '@/features/orders/customer-schemas';
 import type { RequestAction, RequestProposal } from '@/features/orders/types';
 import type { PreviousSource } from '@/features/rag/query';
 import { env } from '@/lib/env';
@@ -27,6 +30,15 @@ export type ApprovalInterrupt = {
 };
 export type ApprovalResume = { decision: 'approved' | 'rejected' | 'expired'; note?: string | null };
 
+/** Interrupt payload when the customer must confirm checkout/cancel in the chat (buttons Xác nhận / Huỷ). */
+export type ConfirmInterrupt = { kind: 'confirmation'; confirmationId: string; action: ConfirmationAction; summary: string; details: string[] };
+export type ConfirmResume = { decision: 'confirmed' | 'cancelled' | 'expired' };
+
+/** Work prepared by a node that must now wait for a decision; kept in state so the waiting node has no side effects when it re-runs on resume. */
+type Awaiting =
+  | { kind: 'approval'; toolCallId: string; proposal: RequestProposal; summary: string; sources: SourceRef[]; orderId: string | null; interrupt: ApprovalInterrupt }
+  | { kind: 'confirmation'; toolCallId: string; toolName: string; interrupt: ConfirmInterrupt };
+
 type PendingAction = { approvalId: string; toolCallId: string; proposal: RequestProposal; summary: string; note: string | null };
 type LastRequest = { action: RequestAction; orderId: string; productId: string; requestedSize: string | null; requestId: string; createdAt: string };
 type Profile = { preferredSize?: string; lastRequest?: LastRequest; updatedAt?: string };
@@ -40,6 +52,11 @@ export const AgentState = Annotation.Root({
   orderId: Annotation<string | null>({ reducer: (current, next) => next ?? current, default: () => null }),
   pendingAction: last<PendingAction | null>(),
   approvalStatus: Annotation<'none' | 'pending' | 'approved' | 'rejected' | 'expired'>({ reducer: (_c, next) => next, default: () => 'none' }),
+  awaiting: last<Awaiting | null>(),
+  /** Orders the customer has proved they own in this thread (browser match or phone). Exchange/return needs it. */
+  verifiedOrders: Annotation<string[]>({ reducer: (current, next) => [...new Set([...current, ...next])], default: () => [] }),
+  /** True after an agent-routed turn, so short follow-ups ("size L", "COD") stay with the agent. */
+  shopContext: Annotation<boolean>({ reducer: (_c, next) => next, default: () => false }),
   turnSources: Annotation<SourceRef[]>({ reducer: (_c, next) => next, default: () => [] }),
   lastSources: Annotation<PreviousSource[]>({ reducer: (_c, next) => next, default: () => [] }),
   lastRequest: last<LastRequest | null>(),
@@ -56,6 +73,7 @@ export type AgentDeps = {
   model: AgentModel;
   gateway: ToolGateway;
   approvals: ApprovalStore;
+  confirmations: ConfirmationStore;
   answerWithRag: typeof answerWithRag;
   now: () => Date;
 };
@@ -101,12 +119,13 @@ function limitAnswer(reason: string): FinalAnswer {
 }
 
 function parseProposal(name: string, args: unknown): RequestProposal {
+  const selector = (parsed: { item_size?: string | null; item_color?: string | null }) => ({ itemSize: parsed.item_size?.trim() || undefined, itemColor: parsed.item_color?.trim() || undefined });
   if (name === 'create_exchange_request') {
-    const parsed = exchangeArgs.parse(args);
-    return { action: 'exchange_size', orderId: parsed.order_id.trim().toUpperCase(), productId: parsed.product_id.trim().toUpperCase(), requestedSize: parsed.requested_size.trim() };
+    const parsed = parseExchangeArgs(args);
+    return { action: 'exchange_size', orderId: parsed.order_id.trim().toUpperCase(), productId: parsed.product_id.trim().toUpperCase(), requestedSize: parsed.requested_size.trim(), ...selector(parsed) };
   }
-  const parsed = returnArgs.parse(args);
-  return { action: 'return', orderId: parsed.order_id.trim().toUpperCase(), productId: parsed.product_id.trim().toUpperCase(), reason: parsed.reason };
+  const parsed = parseReturnArgs(args);
+  return { action: 'return', orderId: parsed.order_id.trim().toUpperCase(), productId: parsed.product_id.trim().toUpperCase(), reason: parsed.reason, ...selector(parsed) };
 }
 
 export function buildAgentGraph(deps: AgentDeps) {
@@ -131,7 +150,8 @@ export function buildAgentGraph(deps: AgentDeps) {
 
   const router = node('router', async (state) => {
     const message = state.messages.findLast((item) => HumanMessage.isInstance(item));
-    return { route: chooseRoute(message ? textOf(message) : '', { orderId: state.orderId }) };
+    const route = chooseRoute(message ? textOf(message) : '', { orderId: state.orderId, shopping: state.shopContext });
+    return { route, shopContext: route === 'agent' ? true : route === 'rag' ? false : state.shopContext };
   });
 
   const guard = node('guard', async (state, config) => {
@@ -171,39 +191,91 @@ export function buildAgentGraph(deps: AgentDeps) {
     return { messages: [response], modelCalls: state.modelCalls + 1 };
   });
 
+  const customerText = (state: AgentStateValue) => state.messages.filter((message) => HumanMessage.isInstance(message)).slice(-4).map(textOf).join('\n');
+  /** The model may only use a phone number the customer actually typed. */
+  const phoneStated = (phone: string, text: string) => {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return false;
+    const compact = text.replace(/[\s.\-()]/g, '');
+    return [normalized, `+84${normalized.slice(1)}`, `84${normalized.slice(1)}`].some((form) => compact.includes(form));
+  };
+  const notAllowed = (code: string, message: string) => ({ status: 'not_allowed', code, message });
+  const cartSource: SourceRef = { id: 'cart:current', title: 'Giỏ hàng', type: 'cart' };
+
+  type ToolContext = { state: AgentStateValue; traceId: string; threadId: string };
+  type ToolOutcome = { payload: unknown; sources?: SourceRef[]; orderId?: string; verified?: string };
+  const toolStatus: Record<string, string> = {
+    lookup_order: 'Đang tra đơn hàng…', search_policy: 'Đang tra chính sách…', lookup_product: 'Đang tra sản phẩm…', search_products: 'Đang tìm sản phẩm…',
+    view_cart: 'Đang xem giỏ hàng…', add_to_cart: 'Đang thêm vào giỏ hàng…', set_cart_quantity: 'Đang cập nhật giỏ hàng…',
+  };
+  const toolHandlers: Record<string, (args: Record<string, unknown>, context: ToolContext) => Promise<ToolOutcome>> = {
+    async lookup_order(rawArgs, { state, traceId, threadId }) {
+      const args = lookupOrderArgs.partial({ phone: true }).parse(rawArgs);
+      const id = args.order_id.trim().toUpperCase();
+      const phone = args.phone?.trim() || null;
+      if (phone && !phoneStated(phone, customerText(state))) {
+        return { payload: notAllowed('phone_not_stated', 'Số điện thoại phải do khách cung cấp trong cuộc trò chuyện. Hãy hỏi khách số điện thoại đặt hàng.') };
+      }
+      const result = await deps.gateway.verifyOrder(threadId, id, phone, traceId);
+      if (!result.verified) return { payload: { status: 'not_verified', order_id: id, message: result.message } };
+      return { payload: { source_id: `order:${id}`, ...result.order }, sources: [{ id: `order:${id}`, title: `Đơn hàng ${id}`, type: 'order' }], orderId: result.order.id, verified: result.order.id };
+    },
+    async lookup_product(args, { traceId }) {
+      const id = String(args.product_id).trim().toUpperCase();
+      const product = await deps.gateway.lookupProduct(id, traceId);
+      return product
+        ? { payload: { source_id: `product:${id}`, ...product }, sources: [{ id: `product:${id}`, title: product.name, type: 'product' }] }
+        : { payload: { found: false, message: `Không có sản phẩm ${id} trong catalog.` } };
+    },
+    async search_policy(args, { traceId }) {
+      const hits = await deps.gateway.searchPolicy(String(args.query), traceId);
+      return { payload: hits.length ? hits : { found: false, message: 'Không tìm thấy chính sách phù hợp.' }, sources: hits.map((hit) => ({ id: hit.source_id, title: hit.title, type: 'policy' })) };
+    },
+    async search_products(rawArgs, { traceId }) {
+      const args = searchProductsArgs.partial({ max_price_vnd: true }).parse(rawArgs);
+      const hits = await deps.gateway.searchProducts(args.query, args.max_price_vnd ?? null, traceId);
+      return { payload: hits.length ? hits : { found: false, message: 'Không tìm thấy sản phẩm phù hợp.' }, sources: hits.map((hit) => ({ id: hit.source_id, title: hit.name, type: 'product' })) };
+    },
+    async view_cart(_args, { threadId, traceId }) {
+      return { payload: await deps.gateway.viewCart(threadId, traceId), sources: [cartSource] };
+    },
+    async add_to_cart(rawArgs, { threadId, traceId }) {
+      const args = cartLineArgs.partial({ color: true }).parse(rawArgs);
+      const cart = await deps.gateway.addToCart(threadId, { productId: args.product_id, size: args.size, color: args.color ?? null, quantity: args.quantity }, traceId);
+      return { payload: { status: 'added', ...cart }, sources: [cartSource, { id: `product:${args.product_id.trim().toUpperCase()}`, title: args.product_id.trim().toUpperCase(), type: 'product' }] };
+    },
+    async set_cart_quantity(rawArgs, { threadId, traceId }) {
+      const args = cartLineArgs.partial({ color: true }).parse(rawArgs);
+      const cart = await deps.gateway.setCartQuantity(threadId, { productId: args.product_id, size: args.size, color: args.color ?? null, quantity: args.quantity }, traceId);
+      return { payload: { status: 'updated', ...cart }, sources: [cartSource] };
+    },
+  };
+
   const tools = node('tools', async (state, config) => {
     const calls = lastAi(state.messages).tool_calls ?? [];
-    const traceId = traceOf(config);
+    const context: ToolContext = { state, traceId: traceOf(config), threadId: threadOf(config) };
     const messages: ToolMessage[] = [];
     let sources = state.turnSources;
     let orderId: string | null = null;
+    const verified: string[] = [];
     for (const call of calls) {
-      config.writer?.({ type: 'status', status: call.name === 'lookup_order' ? 'Đang tra đơn hàng…' : call.name === 'search_policy' ? 'Đang tra chính sách…' : 'Đang tra sản phẩm…' });
+      config.writer?.({ type: 'status', status: toolStatus[call.name] ?? 'Đang xử lý…' });
       try {
-        if (!readTools.has(call.name)) throw new Error('Mỗi lần chỉ được gọi một tool; hãy gọi lại riêng tool này.');
-        if (call.name === 'lookup_order') {
-          const id = String(call.args.order_id).trim().toUpperCase();
-          const order = await deps.gateway.lookupOrder(id, traceId);
-          sources = mergeSources(sources, [{ id: `order:${id}`, title: `Đơn hàng ${id}`, type: 'order' }]);
-          if (order) orderId = order.id;
-          messages.push(toolMessage(call.id!, call.name, order ? { source_id: `order:${id}`, ...order } : { source_id: `order:${id}`, found: false, message: `Không tìm thấy đơn ${id}.` }));
-        } else if (call.name === 'lookup_product') {
-          const id = String(call.args.product_id).trim().toUpperCase();
-          const product = await deps.gateway.lookupProduct(id, traceId);
-          if (product) sources = mergeSources(sources, [{ id: `product:${id}`, title: product.name, type: 'product' }]);
-          messages.push(toolMessage(call.id!, call.name, product ? { source_id: `product:${id}`, ...product } : { found: false, message: `Không có sản phẩm ${id} trong catalog.` }));
-        } else {
-          const hits = await deps.gateway.searchPolicy(String(call.args.query), traceId);
-          sources = mergeSources(sources, hits.map((hit) => ({ id: hit.source_id, title: hit.title, type: 'policy' })));
-          messages.push(toolMessage(call.id!, call.name, hits.length ? hits : { found: false, message: 'Không tìm thấy chính sách phù hợp.' }));
-        }
+        const handler = readTools.has(call.name) || cartTools.has(call.name) ? toolHandlers[call.name] : undefined;
+        if (!handler) throw new Error('Mỗi lần chỉ được gọi một tool; hãy gọi lại riêng tool này.');
+        const outcome = await handler(call.args as Record<string, unknown>, context);
+        if (outcome.sources) sources = mergeSources(sources, outcome.sources);
+        if (outcome.orderId) orderId = outcome.orderId;
+        if (outcome.verified) verified.push(outcome.verified);
+        messages.push(toolMessage(call.id!, call.name, outcome.payload));
       } catch (error) {
         messages.push(toolMessage(call.id!, call.name, { status: 'error', message: error instanceof Error ? error.message : String(error) }));
       }
     }
-    return { messages, toolCalls: state.toolCalls + calls.length, turnSources: sources, orderId };
+    return { messages, toolCalls: state.toolCalls + calls.length, turnSources: sources, orderId, verifiedOrders: verified };
   });
 
+  // ───────── Staff approval for exchange/return: prepare (checks + record) → wait (interrupt) → execute ─────────
   const approve = node('approve', async (state, config) => {
     const call = lastAi(state.messages).tool_calls![0];
     const traceId = traceOf(config);
@@ -214,9 +286,11 @@ export function buildAgentGraph(deps: AgentDeps) {
     if (state.approvalStatus === 'rejected' || state.approvalStatus === 'expired') {
       return { messages: [toolMessage(call.id!, call.name, { status: 'not_allowed', code: 'just_decided', message: `Yêu cầu vừa ${state.approvalStatus === 'rejected' ? 'bị nhân viên từ chối' : 'hết hạn chờ duyệt'}; không đề xuất lại trong lượt này. Hãy báo kết quả cho khách bằng final_answer.` })], toolCalls: state.toolCalls + 1 };
     }
+    if (!state.verifiedOrders.includes(proposal.orderId)) {
+      return { messages: [toolMessage(call.id!, call.name, notAllowed('not_verified', `Chưa xác minh khách sở hữu đơn ${proposal.orderId}. Hỏi số điện thoại đặt hàng rồi gọi lookup_order kèm phone trước khi đề xuất đổi/trả.`))], toolCalls: state.toolCalls + 1 };
+    }
     if (proposal.action === 'return') {
-      const customerText = state.messages.filter((message) => HumanMessage.isInstance(message)).slice(-3).map(textOf).join('\n');
-      if (!returnReasonStated(proposal.reason, customerText)) {
+      if (!returnReasonStated(proposal.reason, customerText(state))) {
         return { messages: [toolMessage(call.id!, call.name, { status: 'not_allowed', code: 'reason_not_stated', message: 'Khách chưa nêu lý do trả hàng thuộc trường hợp được hỗ trợ (nhận sai sản phẩm, sai size/màu so với đơn, lỗi sản xuất). Không tự chọn lý do: giải thích chính sách hoặc hỏi lại khách.' })], toolCalls: state.toolCalls + 1 };
       }
     }
@@ -233,23 +307,33 @@ export function buildAgentGraph(deps: AgentDeps) {
       return { ...base, messages: [toolMessage(call.id!, call.name, { status: 'already_created', request_id: check.existingRequestId, source_id: `request:${check.existingRequestId}`, message: 'Yêu cầu giống hệt đã được tạo trước đó; không tạo bản ghi mới.' })] };
     }
 
-    const payload = Object.fromEntries(Object.entries(proposal).map(([key, value]) => [key, String(value)]));
-    const approval = await deps.approvals.ensure({ threadId: threadOf(config), action: proposal.action, payload, summary: check.summary, sourceIds: sources.map((source) => source.id), idempotencyKey: check.idempotencyKey });
+    // From here on the proposal is canonical (the order line is named when the order holds the product several times).
+    const payload = Object.fromEntries(Object.entries(check.proposal).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    const approval = await deps.approvals.ensure({ threadId: threadOf(config), action: check.proposal.action, payload, summary: check.summary, sourceIds: sources.map((source) => source.id), idempotencyKey: check.idempotencyKey });
     if (approval.threadId !== threadOf(config)) {
       return { ...base, messages: [toolMessage(call.id!, call.name, { status: 'not_allowed', code: 'pending_elsewhere', message: 'Yêu cầu giống hệt đang chờ duyệt trong một cuộc trò chuyện khác.' })] };
     }
+    return {
+      ...base,
+      awaiting: { kind: 'approval' as const, toolCallId: call.id!, proposal: check.proposal, summary: check.summary, sources, orderId: order?.id ?? null, interrupt: { approvalId: approval.id, action: check.proposal.action, payload, summary: check.summary, sourceIds: sources.map((source) => source.id), idempotencyKey: check.idempotencyKey } },
+    };
+  });
 
-    // Execution pauses here until an admin approves/rejects; the node re-runs on resume.
-    const decision = interrupt<ApprovalInterrupt, ApprovalResume>({ approvalId: approval.id, action: proposal.action, payload, summary: check.summary, sourceIds: sources.map((source) => source.id), idempotencyKey: check.idempotencyKey });
-    const reset = { turnSources: sources, orderId: order?.id ?? null, modelCalls: 0, toolCalls: 0 };
+  // Pure wait: no database writes before interrupt(), because the node re-runs from the top when the graph resumes.
+  const approveWait = node('approve_wait', async (state) => {
+    const waiting = state.awaiting;
+    if (waiting?.kind !== 'approval') return { awaiting: null };
+    const decision = interrupt<ApprovalInterrupt, ApprovalResume>(waiting.interrupt);
+    const reset = { awaiting: null, turnSources: waiting.sources, orderId: waiting.orderId, modelCalls: 0, toolCalls: 0 };
     if (decision.decision === 'approved') {
-      return { ...reset, approvalStatus: 'approved' as const, pendingAction: { approvalId: approval.id, toolCallId: call.id!, proposal, summary: check.summary, note: decision.note ?? null } };
+      return { ...reset, approvalStatus: 'approved' as const, pendingAction: { approvalId: waiting.interrupt.approvalId, toolCallId: waiting.toolCallId, proposal: waiting.proposal, summary: waiting.summary, note: decision.note ?? null } };
     }
+    const name = waiting.proposal.action === 'exchange_size' ? 'create_exchange_request' : 'create_return_request';
     return {
       ...reset,
       approvalStatus: decision.decision,
       pendingAction: null,
-      messages: [toolMessage(call.id!, call.name, {
+      messages: [toolMessage(waiting.toolCallId, name, {
         status: decision.decision,
         note: decision.note ?? null,
         message: decision.decision === 'rejected'
@@ -257,6 +341,90 @@ export function buildAgentGraph(deps: AgentDeps) {
           : 'Yêu cầu bị hủy tự động vì quá 7 ngày không có nhân viên duyệt. Đây KHÔNG phải do đơn quá hạn đổi/trả; khách có thể gửi lại yêu cầu nếu đơn vẫn còn trong thời hạn.',
       })],
     };
+  });
+
+  // ───────── Customer confirmation for checkout / cancel: prepare → wait (interrupt) → perform ─────────
+  const confirm = node('confirm', async (state, config) => {
+    const call = lastAi(state.messages).tool_calls![0];
+    const traceId = traceOf(config);
+    const threadId = threadOf(config);
+    const deny = (code: string, message: string, extra: Partial<AgentStateValue> = {}) => ({ ...extra, messages: [toolMessage(call.id!, call.name, notAllowed(code, message))], toolCalls: state.toolCalls + 1 });
+    if (state.approvalStatus === 'rejected' || state.approvalStatus === 'expired') return deny('just_decided', 'Yêu cầu của khách vừa được xử lý; không đề xuất thao tác mới trong lượt này. Hãy báo kết quả cho khách bằng final_answer.');
+    const asked = (action: ConfirmationAction, id: string, summary: string, details: string[], sources: SourceRef[]) => ({
+      toolCalls: state.toolCalls + 1,
+      turnSources: sources,
+      awaiting: { kind: 'confirmation' as const, toolCallId: call.id!, toolName: call.name, interrupt: { kind: 'confirmation' as const, confirmationId: id, action, summary, details } },
+    });
+
+    if (call.name === 'checkout') {
+      const parsed = checkoutArgs.partial({ note: true }).safeParse(call.args);
+      if (!parsed.success) return deny('invalid_arguments', 'Thiếu thông tin giao hàng: cần họ tên, số điện thoại, địa chỉ và hình thức thanh toán do khách cung cấp.');
+      const form = checkoutInput.omit({ idempotencyKey: true }).safeParse({ name: parsed.data.name, phone: parsed.data.phone, address: parsed.data.address, note: parsed.data.note ?? '', paymentMethod: parsed.data.payment_method });
+      if (!form.success) return deny('invalid_arguments', form.error.issues[0]?.message ?? 'Thông tin giao hàng chưa hợp lệ.');
+      if (!phoneStated(form.data.phone, customerText(state))) return deny('phone_not_stated', 'Số điện thoại nhận hàng phải do khách cung cấp trong cuộc trò chuyện. Hãy hỏi khách.');
+      const cart = await deps.gateway.viewCart(threadId, traceId);
+      const sources = mergeSources(state.turnSources, [cartSource]);
+      if (!cart.lines.length) return deny('cart_empty', 'Giỏ hàng đang trống; hãy giúp khách thêm sản phẩm trước.', { turnSources: sources });
+      const problems = cart.lines.filter((line) => line.issue);
+      if (problems.length) return deny('cart_has_issues', `Giỏ hàng có sản phẩm không đặt được: ${problems.map((line) => `${line.name} (${line.size} / ${line.color}): ${line.issue}`).join('; ')}. Hãy báo khách và điều chỉnh giỏ.`, { turnSources: sources });
+      const payload: CheckoutPayload = { name: form.data.name, phone: form.data.phone, address: form.data.address, note: form.data.note, paymentMethod: form.data.paymentMethod };
+      const details = checkoutDetails(cart, payload);
+      const summary = `Đặt hàng ${cart.item_count} sản phẩm, tổng ${details.find((line) => line.startsWith('Tổng thanh toán'))?.split(': ')[1] ?? ''}`;
+      const created = await deps.confirmations.create({ threadId, action: 'checkout', payload, summary, details, fingerprint: cartFingerprint(cart) });
+      return asked('checkout', created.id, summary, details, sources);
+    }
+
+    const parsed = cancelOrderArgs.partial({ phone: true }).safeParse(call.args);
+    if (!parsed.success) return deny('invalid_arguments', 'Thiếu mã đơn cần hủy.');
+    const id = parsed.data.order_id.trim().toUpperCase();
+    const phone = parsed.data.phone?.trim() || null;
+    if (phone && !phoneStated(phone, customerText(state))) return deny('phone_not_stated', 'Số điện thoại phải do khách cung cấp trong cuộc trò chuyện. Hãy hỏi khách số điện thoại đặt hàng.');
+    const verification = await deps.gateway.verifyOrder(threadId, id, phone, traceId);
+    if (!verification.verified) return deny('not_verified', verification.message);
+    const order = verification.order;
+    const sources = mergeSources(state.turnSources, [{ id: `order:${id}`, title: `Đơn hàng ${id}`, type: 'order' }]);
+    const base = { orderId: order.id, verifiedOrders: [order.id] };
+    if (!order.canCancel) {
+      return deny('not_cancellable', order.status === 'cancelled' ? `Đơn ${id} đã được hủy trước đó.` : order.status !== 'processing' ? `Đơn ${id} đang ở trạng thái ${order.status} nên không hủy được.` : `Đơn ${id} đã thanh toán nên không tự hủy được; khách cần liên hệ cửa hàng để được hoàn tiền.`, { ...base, turnSources: sources });
+    }
+    const details = cancelDetails(order);
+    const summary = `Hủy đơn ${id}`;
+    const created = await deps.confirmations.create({ threadId, action: 'cancel_order', payload: { orderCode: id, phone }, summary, details, fingerprint: orderFingerprint({ id: order.id, status: order.status, paymentStatus: order.paymentStatus }) });
+    return { ...base, ...asked('cancel_order', created.id, summary, details, sources) };
+  });
+
+  const confirmWait = node('confirm_wait', async (state) => {
+    const waiting = state.awaiting;
+    if (waiting?.kind !== 'confirmation') return { awaiting: null };
+    const answer = interrupt<ConfirmInterrupt, ConfirmResume>(waiting.interrupt);
+    if (answer.decision === 'confirmed') return { modelCalls: 0, toolCalls: 0 };
+    return {
+      awaiting: null, modelCalls: 0, toolCalls: 0,
+      messages: [toolMessage(waiting.toolCallId, waiting.toolName, {
+        status: answer.decision,
+        message: answer.decision === 'cancelled' ? 'Khách đã bấm Huỷ: thao tác KHÔNG được thực hiện. Giỏ hàng/đơn giữ nguyên.' : 'Khách không xác nhận trong thời gian cho phép nên thao tác KHÔNG được thực hiện. Mời khách yêu cầu lại nếu vẫn muốn.',
+      })],
+    };
+  });
+
+  const perform = node('perform', async (state, config) => {
+    const waiting = state.awaiting;
+    if (waiting?.kind !== 'confirmation') return { awaiting: null };
+    const { confirmationId, action } = waiting.interrupt;
+    config.writer?.({ type: 'status', status: action === 'checkout' ? 'Đang tạo đơn hàng…' : 'Đang hủy đơn…' });
+    try {
+      const traceId = traceOf(config);
+      const done = action === 'checkout' ? await deps.gateway.checkout(threadOf(config), confirmationId, traceId) : await deps.gateway.cancelOrder(threadOf(config), confirmationId, traceId);
+      return {
+        awaiting: null, toolCalls: state.toolCalls + 1,
+        messages: [toolMessage(waiting.toolCallId, waiting.toolName, { ...done, message: action === 'checkout' ? 'Khách đã xác nhận và đơn hàng đã được tạo thành công.' : 'Khách đã xác nhận và đơn đã được hủy.' })],
+        turnSources: mergeSources(state.turnSources, [{ id: done.source_id, title: `Đơn hàng ${done.order_code}`, type: 'order' }]),
+        orderId: done.order_code,
+        verifiedOrders: [done.order_code],
+      };
+    } catch (error) {
+      return { awaiting: null, toolCalls: state.toolCalls + 1, messages: [toolMessage(waiting.toolCallId, waiting.toolName, { status: 'error', message: error instanceof Error ? error.message : String(error) })] };
+    }
   });
 
   const execute = node('execute', async (state, config) => {
@@ -345,6 +513,10 @@ export function buildAgentGraph(deps: AgentDeps) {
     .addNode('agent', agent)
     .addNode('tools', tools)
     .addNode('approve', approve)
+    .addNode('approve_wait', approveWait)
+    .addNode('confirm', confirm)
+    .addNode('confirm_wait', confirmWait)
+    .addNode('perform', perform)
     .addNode('execute', execute)
     .addNode('respond', respond)
     .addNode('limit', limit)
@@ -358,11 +530,16 @@ export function buildAgentGraph(deps: AgentDeps) {
       const calls = lastAi(state.messages).tool_calls ?? [];
       if (!calls.length || calls.some((call) => call.name === 'final_answer')) return 'respond';
       if (calls.length === 1 && writeTools.has(calls[0].name)) return 'approve';
+      if (calls.length === 1 && confirmTools.has(calls[0].name)) return 'confirm';
       if (state.toolCalls + calls.length > env.AGENT_MAX_TOOL_CALLS) return 'limit';
       return 'tools';
-    }, ['respond', 'approve', 'tools', 'limit', END])
+    }, ['respond', 'approve', 'confirm', 'tools', 'limit', END])
     .addEdge('tools', 'agent')
-    .addConditionalEdges('approve', (state) => state.approvalStatus === 'approved' && state.pendingAction ? 'execute' : 'agent', ['execute', 'agent'])
+    .addConditionalEdges('approve', (state) => state.awaiting?.kind === 'approval' ? 'approve_wait' : 'agent', ['approve_wait', 'agent'])
+    .addConditionalEdges('approve_wait', (state) => state.approvalStatus === 'approved' && state.pendingAction ? 'execute' : 'agent', ['execute', 'agent'])
+    .addConditionalEdges('confirm', (state) => state.awaiting?.kind === 'confirmation' ? 'confirm_wait' : 'agent', ['confirm_wait', 'agent'])
+    .addConditionalEdges('confirm_wait', (state) => state.awaiting?.kind === 'confirmation' ? 'perform' : 'agent', ['perform', 'agent'])
+    .addEdge('perform', 'agent')
     .addEdge('execute', 'agent')
     .addEdge('respond', 'remember')
     .addEdge('remember', END)

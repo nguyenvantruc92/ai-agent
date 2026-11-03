@@ -3,15 +3,24 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useConfirm, useToast } from '@/components/admin/feedback';
+import { EmptyState, PageHeader, td, th } from '@/components/admin/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/admin-ui/button';
+import { DatabaseIcon, SearchIcon, UploadIcon } from '@/components/admin-ui/icons';
+import { Input } from '@/components/admin-ui/input';
+import { cn } from '@/lib/cn';
+import { friendlyError } from '@/lib/friendly-error';
 
 type Document = { id: string; original_filename: string; status: string; created_at: string; version?: number; version_status?: string; active_version?: number | null; error?: string | null };
 type RetrievalResult = { traceId: string; chunks: { source_id: string; title: string; similarity: number }[]; queries: { name: string; thresholded: boolean; results: { id: string; score: number }[] }[] };
 
 export default function KnowledgeClient() {
   const router = useRouter();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [error, setError] = useState('');
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState('');
   const [retrieval, setRetrieval] = useState<RetrievalResult>();
@@ -20,6 +29,7 @@ export default function KnowledgeClient() {
     const response = await fetch('/api/admin/documents');
     if (response.status === 401) { router.push('/admin/login'); return; }
     setDocuments(await response.json());
+    setLoaded(true);
   }, [router]);
 
   const inProgress = documents.some((doc) => ['pending', 'processing'].includes(doc.version_status ?? doc.status));
@@ -34,55 +44,82 @@ export default function KnowledgeClient() {
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setBusy(true); setError('');
+    setBusy(true);
     const body = new FormData(); body.set('file', file);
     const response = await fetch('/api/admin/documents', { method: 'POST', body });
-    if (!response.ok) setError((await response.json()).error ?? 'Upload thất bại.');
+    const data = await response.json().catch(() => ({})) as { error?: string; imported?: { products: number } };
+    if (!response.ok) toast('error', data.error ?? 'Upload thất bại.');
+    else toast('success', data.imported ? `Đã import ${data.imported.products} sản phẩm từ XLSX.` : 'Đã upload, đang xếp hàng index.');
     await load(); setBusy(false); event.target.value = '';
   }
-  async function reindex(id: string) { await fetch(`/api/admin/documents/${id}/reindex`, { method: 'POST' }); await load(); }
-  async function remove(id: string) { if (confirm('Xóa mềm tài liệu này?')) { await fetch(`/api/admin/documents/${id}`, { method: 'DELETE' }); await load(); } }
-  async function logout() { await fetch('/api/admin/session', { method: 'DELETE' }); router.push('/admin/login'); }
+  async function reindex(id: string) { await fetch(`/api/admin/documents/${id}/reindex`, { method: 'POST' }); toast('success', 'Đã xếp hàng index lại.'); await load(); }
+  async function remove(id: string) {
+    if (!(await confirm({ title: 'Xóa mềm tài liệu này?', message: 'Chatbot sẽ ngừng dùng tài liệu này.', confirmLabel: 'Xóa', danger: true }))) return;
+    const response = await fetch(`/api/admin/documents/${id}`, { method: 'DELETE' });
+    if (!response.ok) toast('error', (await response.json().catch(() => ({}))).error ?? 'Không xóa được.');
+    else toast('success', 'Đã xóa tài liệu.');
+    await load();
+  }
   async function testRetrieval(event: FormEvent) {
     event.preventDefault();
     if (!question.trim()) return;
     const response = await fetch('/api/admin/retrieval-test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: question }) });
     if (response.ok) setRetrieval(await response.json());
-    else setError((await response.json()).error ?? 'Không chạy được retrieval test.');
+    else toast('error', (await response.json()).error ?? 'Không chạy được retrieval test.');
   }
 
-  return <main className="mx-auto max-w-5xl p-6">
-    <div className="flex items-center justify-between gap-4">
-      <div><h1 className="text-2xl font-semibold">Knowledge</h1><p className="mt-1 text-sm text-stone-600">PDF chính sách và XLSX catalog được index bởi worker. Chat dùng version active cho đến khi version mới ready.</p></div>
-      <div className="flex gap-4 text-sm"><Link className="underline" href="/admin/approvals">Duyệt đổi/trả</Link><Link className="underline" href="/chat">Mở chat</Link><button className="underline" onClick={() => void logout()}>Đăng xuất</button></div>
-    </div>
-    <label className="mt-6 inline-block cursor-pointer rounded bg-stone-900 px-4 py-2 text-sm text-white">{busy ? 'Đang upload…' : 'Upload PDF/XLSX'}<input className="hidden" type="file" accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} /></label>
-    {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-    <div className="mt-6 overflow-x-auto rounded border bg-white"><table className="w-full text-left text-sm">
-      <thead className="bg-stone-100"><tr><th className="p-3">File</th><th className="p-3">Active</th><th className="p-3">Version mới nhất</th><th className="p-3">Thao tác</th></tr></thead>
-      <tbody>{documents.map((doc) => <tr key={doc.id} className="border-t">
-        <td className="p-3"><Link className="underline" href={`/admin/knowledge/${doc.id}`}>{doc.original_filename}</Link>{doc.error && <p className="mt-1 text-xs text-red-700">{doc.error}</p>}</td>
-        <td className="p-3">{doc.active_version ? `v${doc.active_version}` : '—'}</td>
-        <td className="p-3">v{doc.version ?? 1} <StatusBadge status={doc.version_status ?? doc.status} /></td>
-        <td className="space-x-3 p-3"><button className="underline" onClick={() => void reindex(doc.id)}>Re-index</button><button className="text-red-700 underline" onClick={() => void remove(doc.id)}>Xóa</button></td>
-      </tr>)}</tbody>
-    </table></div>
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Knowledge" description="PDF chính sách được index bởi worker; XLSX sẽ import vào danh sách sản phẩm. Chat dùng version active cho đến khi version mới ready."
+        actions={
+          <label className={cn('inline-flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600', busy && 'pointer-events-none opacity-60')}>
+            <UploadIcon className="size-5" />{busy ? 'Đang upload…' : 'Upload PDF/XLSX'}
+            <input className="sr-only" type="file" accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} />
+          </label>
+        } />
 
-    <section className="mt-8 rounded border bg-white p-4">
-      <h2 className="font-semibold">Kiểm tra retrieval</h2>
-      <form className="mt-3 flex gap-2" onSubmit={testRetrieval}>
-        <input className="flex-1 rounded border p-2 text-sm" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ví dụ: Phí giao hàng bao nhiêu?" />
-        <button className="rounded bg-stone-900 px-4 text-sm text-white">Chạy</button>
-      </form>
-      {retrieval && <div className="mt-4 space-y-3 text-sm">
-        <p className="text-xs text-stone-500">Trace: {retrieval.traceId}</p>
-        <div><p className="font-medium">Context đưa vào prompt ({retrieval.chunks.length})</p>
-          {retrieval.chunks.length ? retrieval.chunks.map((chunk) => <p key={chunk.source_id}><code className="text-xs">{chunk.source_id}</code> · {chunk.title} <span className="text-stone-500">({chunk.similarity.toFixed(3)})</span></p>) : <p className="text-stone-500">Không có chunk đạt ngưỡng — chat sẽ trả thiếu thông tin.</p>}
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
+            <thead className="border-b border-gray-100 dark:border-white/5"><tr><th className={th}>File</th><th className={th}>Active</th><th className={th}>Version mới nhất</th><th className={th}>Thao tác</th></tr></thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+              {loaded && documents.length === 0 && <tr><td colSpan={4}><EmptyState icon={<DatabaseIcon />} title="Chưa có tài liệu" hint="Upload PDF chính sách để chatbot trả lời về giao hàng, đổi trả…" /></td></tr>}
+              {documents.map((doc) => (
+                <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-white/2">
+                  <td className={td}><Link className="font-medium text-gray-800 hover:underline dark:text-white/90" href={`/admin/knowledge/${doc.id}`}>{doc.original_filename}</Link>{doc.error && <p className="mt-1 text-theme-xs text-red-500">{friendlyError(doc.error)}</p>}</td>
+                  <td className={td}>{doc.active_version ? `v${doc.active_version}` : '—'}</td>
+                  <td className={td}><span className="inline-flex items-center gap-2">v{doc.version ?? 1} <StatusBadge status={doc.version_status ?? doc.status} /></span></td>
+                  <td className={td}><Button size="xs" variant="ghost" onClick={() => void reindex(doc.id)}>Re-index</Button><Button size="xs" variant="ghost" className="text-red-500 hover:text-red-600" onClick={() => void remove(doc.id)}>Xóa</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {retrieval.queries.map((query) => <details key={query.name}><summary className="cursor-pointer">{query.name} {query.thresholded ? '' : '(không áp ngưỡng)'}</summary>
-          {query.results.map((result) => <p key={result.id} className="ml-4 text-xs"><code>{result.id}</code> {result.score.toFixed(3)}</p>)}
-        </details>)}
-      </div>}
-    </section>
-  </main>;
+      </div>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-800 dark:bg-white/3">
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">Kiểm tra retrieval</h2>
+        <form className="mt-4 flex gap-2" onSubmit={testRetrieval}>
+          <div className="relative flex-1"><SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-gray-400" /><Input className="pl-11" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ví dụ: Phí giao hàng bao nhiêu?" /></div>
+          <Button type="submit" size="lg">Chạy</Button>
+        </form>
+        {retrieval && (
+          <div className="mt-5 space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            <p className="text-theme-xs text-gray-500">Trace: {retrieval.traceId}</p>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-white/90">Context đưa vào prompt ({retrieval.chunks.length})</p>
+              {retrieval.chunks.length
+                ? retrieval.chunks.map((chunk) => <p key={chunk.source_id}><code className="text-xs">{chunk.source_id}</code> · {chunk.title} <span className="text-gray-500">({chunk.similarity.toFixed(3)})</span></p>)
+                : <p className="text-gray-500">Không có chunk đạt ngưỡng — chat sẽ trả thiếu thông tin.</p>}
+            </div>
+            {retrieval.queries.map((query) => (
+              <details key={query.name}><summary className="cursor-pointer">{query.name} {query.thresholded ? '' : '(không áp ngưỡng)'}</summary>
+                {query.results.map((result) => <p key={result.id} className="ml-4 text-xs"><code>{result.id}</code> {result.score.toFixed(3)}</p>)}
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }

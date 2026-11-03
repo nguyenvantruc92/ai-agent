@@ -51,4 +51,9 @@ export const seedOrders: SeedOrder[] = [
     { productId: 'QT-007', productName: 'Quần jogger đen co giãn', size: 'M', color: 'Đen', quantity: 1, unitPriceVnd: 459000 },
     { productId: 'PK-001', productName: 'Thắt lưng da nâu bản 3,5 cm', size: '105 cm', color: 'Nâu', quantity: 1, unitPriceVnd: 399000 },
   ] },
+  // The same product on two lines (M and L): the agent must ask which line the customer means.
+  { id: 'FT-2026-1013', status: 'delivered', orderedDaysAgo: 4, deliveredDaysAgo: 2, paymentMethod: 'COD', items: [
+    { productId: 'SM-001', productName: 'Áo sơ mi Oxford trắng dáng regular', size: 'M', color: 'Trắng', quantity: 1, unitPriceVnd: 499000 },
+    { productId: 'SM-001', productName: 'Áo sơ mi Oxford trắng dáng regular', size: 'L', color: 'Trắng', quantity: 1, unitPriceVnd: 499000 },
+  ] },
 ];

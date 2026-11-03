@@ -2,23 +2,44 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FormField } from '@/components/admin/form';
+import { Button } from '@/components/admin-ui/button';
+import { Input } from '@/components/admin-ui/input';
 
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setBusy(true); setError('');
     const response = await fetch('/api/admin/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
-    if (response.ok) router.push('/admin/knowledge');
-    else setError((await response.json()).error ?? 'Không thể đăng nhập.');
+    if (response.ok) router.push('/admin');
+    else { setError((await response.json()).error ?? 'Không thể đăng nhập.'); setBusy(false); }
   }
-  return <main className="mx-auto mt-24 max-w-sm rounded-xl bg-white p-6 shadow-sm">
-    <h1 className="text-xl font-semibold">Đăng nhập quản trị</h1>
-    <form className="mt-5 space-y-3" onSubmit={submit}>
-      <input className="w-full rounded border p-2" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mật khẩu" autoFocus />
-      {error && <p className="text-sm text-red-700">{error}</p>}
-      <button className="w-full rounded bg-stone-900 p-2 text-white">Đăng nhập</button>
-    </form>
-  </main>;
+  return (
+    <main className="grid min-h-screen bg-white lg:grid-cols-2">
+      <div className="flex items-center justify-center p-6">
+        <form onSubmit={submit} className="w-full max-w-md space-y-6">
+          <div>
+            <span className="mb-6 grid size-12 place-items-center rounded-xl bg-brand-500 font-display text-xl font-semibold text-white">T</span>
+            <h1 className="text-title-lg font-semibold text-gray-800">Đăng nhập quản trị</h1>
+            <p className="mt-1.5 text-sm text-gray-500">Nhập mật khẩu quản trị để quản lý cửa hàng và trợ lý AI.</p>
+          </div>
+          <FormField label="Mật khẩu"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus autoComplete="current-password" required /></FormField>
+          {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+          <Button type="submit" size="lg" className="w-full" disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</Button>
+        </form>
+      </div>
+      <div className="relative hidden items-center justify-center overflow-hidden bg-brand-950 lg:flex">
+        <div className="absolute -top-24 -right-24 size-96 rounded-full bg-brand-500/30 blur-3xl" aria-hidden />
+        <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-brand-700/40 blur-3xl" aria-hidden />
+        <div className="relative max-w-sm px-8 text-center">
+          <p className="font-display text-2xl font-semibold tracking-[0.2em] text-white">TOMODEV</p>
+          <p className="mt-4 text-gray-400">Quản lý sản phẩm, theo dõi tồn kho và duyệt yêu cầu đổi/trả của khách tại một nơi.</p>
+        </div>
+      </div>
+    </main>
+  );
 }

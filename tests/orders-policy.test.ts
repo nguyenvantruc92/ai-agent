@@ -44,7 +44,55 @@ describe('checkRequest', () => {
   });
 });
 
+describe('checkRequest with the same product on several order lines', () => {
+  const line = (size: string, color: string) => ({ productId: 'PL-002', productName: 'Áo polo pique', size, color, quantity: 1, unitPriceVnd: 389000, discountPercent: 0, isOpened: false });
+  const base: Order = { id: 'FT-2026-1100', status: 'delivered', orderedAt: NOW.toISOString(), deliveredAt: NOW.toISOString(), paymentMethod: 'COD', items: [line('M', 'Trắng'), line('L', 'Đen')], requests: [] };
+  const pl002 = product('PL-002', { sizes: ['S', 'M', 'L', 'XL'] });
+  const exchangeLine = (requestedSize: string, itemSize?: string, itemColor?: string) => ({ ...exchange('FT-2026-1100', 'PL-002', requestedSize), itemSize, itemColor });
+
+  it('asks which line is meant instead of guessing', () => {
+    expect(checkRequest(exchangeLine('XL'), base, pl002, NOW)).toMatchObject({ ok: false, code: 'ambiguous_item' });
+    expect(checkRequest(exchangeLine('XL', 'M'), base, pl002, NOW)).toMatchObject({ ok: true });
+    expect(checkRequest(exchangeLine('XL', undefined, 'đen'), base, pl002, NOW)).toMatchObject({ ok: true, summary: expect.stringContaining('L / Đen') });
+  });
+
+  it('names the chosen line in the canonical proposal and the idempotency key', () => {
+    const result = checkRequest(exchangeLine('XL', 'm', 'trắng'), base, pl002, NOW);
+    expect(result).toMatchObject({ ok: true, proposal: { itemSize: 'M', itemColor: 'Trắng' }, idempotencyKey: 'FT-2026-1100:PL-002:exchange_size:XL:line:M:TRẮNG' });
+  });
+
+  it('rejects a line that is not in the order, and compares the size of the chosen line', () => {
+    expect(checkRequest(exchangeLine('XL', 'S'), base, pl002, NOW)).toMatchObject({ ok: false, code: 'item_not_in_order' });
+    expect(checkRequest(exchangeLine('M', 'M'), base, pl002, NOW)).toMatchObject({ ok: false, code: 'same_size' });
+    expect(checkRequest(exchangeLine('M', 'L'), base, pl002, NOW)).toMatchObject({ ok: true });
+  });
+
+  it('only blocks a second request for the same line, not for the other one', () => {
+    const first = checkRequest(exchangeLine('XL', 'M'), base, pl002, NOW);
+    if (!first.ok) throw new Error('setup');
+    const existing: Order = { ...base, requests: [{ id: 'req-1', type: 'exchange_size', productId: 'PL-002', requestedSize: 'XL', reason: null, status: 'created', idempotencyKey: first.idempotencyKey, createdAt: '', itemSize: 'M', itemColor: 'Trắng' }] };
+    expect(checkRequest(exchangeLine('S', 'M'), existing, pl002, NOW)).toMatchObject({ ok: false, code: 'already_requested' });
+    expect(checkRequest(exchangeLine('XL', 'L'), existing, pl002, NOW)).toMatchObject({ ok: true });
+  });
+
+  it('ignores a selector on an order with a single line of the product only when it matches that line', () => {
+    const single: Order = { ...base, items: [line('M', 'Trắng')] };
+    expect(checkRequest(exchangeLine('L', 'M', 'Trắng'), single, pl002, NOW)).toMatchObject({ ok: true, idempotencyKey: 'FT-2026-1100:PL-002:exchange_size:L' });
+    expect(checkRequest(exchangeLine('L', 'XL'), single, pl002, NOW)).toMatchObject({ ok: false, code: 'item_not_in_order' });
+  });
+});
+
 describe('chooseRoute', () => {
+  it('sends cart, ordering and cancelling to the agent, and keeps its short follow-ups there', () => {
+    expect(chooseRoute('Thêm áo polo trắng size M vào giỏ hàng', { orderId: null })).toBe('agent');
+    expect(chooseRoute('Tôi muốn mua áo sơ mi Oxford', { orderId: null })).toBe('agent');
+    expect(chooseRoute('Đặt hàng giúp mình', { orderId: null })).toBe('agent');
+    expect(chooseRoute('Huỷ đơn giúp mình', { orderId: null })).toBe('agent');
+    expect(chooseRoute('size M, màu trắng', { orderId: null, shopping: true })).toBe('agent');
+    expect(chooseRoute('size M, màu trắng', { orderId: null, shopping: false })).toBe('rag');
+    expect(chooseRoute('Áo polo trắng giá bao nhiêu?', { orderId: null })).toBe('rag');
+  });
+
   it('sends order and exchange intents to the agent', () => {
     expect(chooseRoute('Đơn FT-2026-1001 của tôi giao chưa?', { orderId: null })).toBe('agent');
     expect(chooseRoute('Tôi muốn đổi áo sang size L', { orderId: null })).toBe('agent');
@@ -70,5 +118,14 @@ describe('returnReasonStated', () => {
     expect(returnReasonStated('wrong_item', 'Shop giao nhầm sản phẩm cho tôi')).toBe(true);
     expect(returnReasonStated('manufacturing_defect', 'Tôi không thích nữa, muốn trả hàng hoàn tiền')).toBe(false);
     expect(returnReasonStated('wrong_item', 'Tôi nhận sai màu')).toBe(false);
+  });
+});
+
+describe('ambiguous order lines', () => {
+  it('refuses to guess when one order holds the same product in two sizes', async () => {
+    const base = await order('FT-2026-1001');
+    const doubled: Order = { ...base, items: [base.items[0], { ...base.items[0], size: 'L' }] };
+    const result = checkRequest(exchange(base.id, base.items[0].productId, 'XL'), doubled, product(base.items[0].productId), NOW);
+    expect(result).toMatchObject({ ok: false, code: 'ambiguous_item' });
   });
 });

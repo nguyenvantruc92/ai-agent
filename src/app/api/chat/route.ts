@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { turnStream } from '@/app/api/chat/stream';
 import { runChatTurn } from '@/features/agent/session';
 import { chatRequestSchema } from '@/features/chat/schema';
 import { getOrCreateThread, visitorSession } from '@/features/chat/visitor';
@@ -36,37 +37,8 @@ export async function POST(request: Request) {
   }
   logger.info({ trace_id: traceId, stage: 'chat.received', threadId, question: redactForTrace(body.message) });
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (type: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
-      send('start', { threadId, traceId });
-      try {
-        const result = await runChatTurn({
-          threadId,
-          visitorId: visitor.visitorId,
-          message: body.message,
-          traceId,
-          signal: request.signal,
-          onEvent: (event) => event.type === 'partial'
-            ? send('partial', { answer: event.answer, checkingSources: true })
-            : send('status', { status: event.status }),
-        });
-        if (result.kind === 'answer') {
-          send('complete', { answer: result.answer.answer, citedSourceIds: result.answer.citedSourceIds, insufficientInformation: result.answer.insufficientInformation, sources: result.answer.sources, traceId });
-        } else if (result.kind === 'pending') {
-          send('complete', { answer: result.message, citedSourceIds: [], insufficientInformation: false, sources: [], traceId, pendingApproval: { id: result.approval.approvalId, summary: result.approval.summary } });
-        } else {
-          send('complete', { answer: result.message, citedSourceIds: [], insufficientInformation: false, sources: [], traceId, pendingApproval: { id: result.approvalId } });
-        }
-        logger.info({ trace_id: traceId, stage: 'chat.completed', kind: result.kind, latencyMs: Date.now() - startedAt });
-      } catch (error) {
-        const aborted = request.signal.aborted;
-        logger.error({ trace_id: traceId, stage: aborted ? 'chat.aborted' : 'chat.failed', latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
-        if (!aborted) send('error', { message: 'Không thể hoàn tất câu trả lời. Vui lòng thử lại.', traceId });
-      } finally {
-        controller.close();
-      }
-    },
+  return turnStream({
+    request, visitor, traceId, threadId, startedAt,
+    run: (onEvent) => runChatTurn({ threadId, visitorId: visitor.visitorId, message: body.message, traceId, signal: request.signal, onEvent }),
   });
-  return visitor.persist(new NextResponse(stream, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive' } }));
 }

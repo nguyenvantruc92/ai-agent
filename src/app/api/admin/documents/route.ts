@@ -3,6 +3,7 @@ import { createDocument, listDocuments } from '@/features/knowledge/repository';
 import { saveUpload, validateUpload } from '@/features/knowledge/files';
 import { requireAdmin, jsonError } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
+import { importCatalog } from '@/features/catalog/import';
 import { env } from '@/lib/env';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) throw new Error('Cần chọn file PDF hoặc XLSX.');
     const bytes = Buffer.from(await file.arrayBuffer());
     const { extension, mime } = validateUpload(file, bytes);
+    // A spreadsheet is a product import, not a knowledge file: it updates the products table.
+    if (extension === '.xlsx') return NextResponse.json({ imported: await importCatalog(bytes) }, { status: 200 });
     const documentId = randomUUID();
     const saved = await saveUpload(documentId, extension, bytes);
     const created = await createDocument({

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from '@/db/client';
+import { catalogMime } from '@/features/catalog/sync';
 
 export type DocumentRow = {
   id: string; original_filename: string; storage_key: string; mime_type: string; content_hash: string;
@@ -69,6 +70,7 @@ export async function reindexDocument(id: string) {
 export async function softDeleteDocument(id: string) {
   const document = await getDocument(id);
   if (!document || document.deleted_at) throw new Error('Không tìm thấy tài liệu.');
+  if (document.mime_type === catalogMime) throw new Error('Catalog sản phẩm được tạo từ danh sách sản phẩm, không xóa được.');
   await sql`UPDATE knowledge_documents SET status = 'deleted', deleted_at = now(), updated_at = now() WHERE id = ${id}`;
   return document;
 }

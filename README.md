@@ -23,19 +23,29 @@ Trợ lý tiếng Việt cho cửa hàng thời trang nam:
    docker compose exec web pnpm db:seed
    ```
 
-   Compose chạy 4 service: `db`, `web`, `worker` và `mcp` (MCP server nội bộ, không mở port). Migration tự tạo bảng, schema `langgraph` (checkpoint/memory) và seed 12 đơn demo `FT-2026-1001`–`FT-2026-1012` khi bảng `orders` còn trống.
+   Compose chạy 4 service: `db`, `web`, `worker` và `mcp` (MCP server nội bộ, không mở port). Migration tự tạo bảng, schema `langgraph` (checkpoint/memory) và seed 13 đơn demo `FT-2026-1001`–`FT-2026-1013` khi bảng `orders` còn trống.
 
-3. Mở `http://localhost:3000/chat`. Vào `/admin/login` để upload/re-index Knowledge và chạy thử retrieval. Chat tiếp tục dùng version active cho đến khi version mới `ready`.
+3. Mở `http://localhost:3000`: trợ lý AI là khung chat nổi ở góc dưới bên phải mọi trang cửa hàng (`/chat` chuyển về trang chủ và mở khung chat). Vào `/admin/login` để upload/re-index Knowledge và chạy thử retrieval. Chat tiếp tục dùng version active cho đến khi version mới `ready`.
 
 4. (Tùy chọn) Mở URL demo qua Cloudflare Tunnel: đặt `CLOUDFLARE_TUNNEL_TOKEN` trong `.env` rồi chạy `docker compose --profile tunnel up -d`.
 
 ## Thử Agent (Week 7)
 
-1. Trong `/chat`, gửi: `Đơn FT-2026-1001 của tôi có áo sơ mi SM-001 bị rộng, tôi muốn đổi sang size L.` Agent tra đơn, sản phẩm, chính sách rồi báo đang chờ duyệt; ô nhập bị khóa.
+1. Trong khung chat, gửi: `Đơn FT-2026-1001 của tôi có áo sơ mi SM-001 bị rộng, tôi muốn đổi sang size L.` Agent hỏi số điện thoại đặt hàng (đơn demo: `0900` + 6 số cuối của mã đơn, ví dụ `FT-2026-1001` → `0900261001`); sau khi xác minh, agent tra đơn, sản phẩm, chính sách rồi báo đang chờ duyệt; ô nhập bị khóa.
 2. Mở `/admin/approvals`, bấm **Duyệt** hoặc **Từ chối** (có thể kèm ghi chú). Graph resume đúng `thread_id`; câu trả lời hiện trong chat sau vài giây.
 3. Đặt lại dữ liệu đơn demo (ngày giao tính lại theo hôm nay, xóa yêu cầu/approval): `docker compose exec web pnpm db:reset-orders`.
 
-Các đơn demo: 1001/1002/1009/1010/1012 đổi/trả hợp lệ; 1003 quá 7 ngày; 1004 đang giao; 1005 đang xử lý; 1006 tất và phụ kiện đã mở; 1007 giảm giá 40%; 1008 đã có yêu cầu đổi; 1011 đã hủy. Sơ đồ graph, state, vị trí `interrupt()` và quyền từng tool: [docs/agent-graph.md](docs/agent-graph.md).
+## Thử Agent mua hàng (Giai đoạn 6)
+
+Agent cũng bán hàng qua MCP: `search_products`, `view_cart`, `add_to_cart`, `set_cart_quantity`, `checkout`, `cancel_order`. Giỏ hàng là giỏ của chính trình duyệt đang chat (server tra khách từ `thread_id`, model không tự truyền danh tính).
+
+1. Gửi: `Tôi muốn mua 2 áo sơ mi Oxford trắng size M`. Agent tìm sản phẩm, thêm vào giỏ (số trên biểu tượng giỏ ở header cập nhật ngay).
+2. Gửi họ tên, số điện thoại, địa chỉ và hình thức thanh toán để đặt hàng. Agent **không** tạo đơn: khung chat hiện thẻ chi tiết đơn với nút **Xác nhận** / **Huỷ**. Chỉ cú bấm từ trình duyệt của bạn (`POST /api/chat/confirmations/:id`) mới tạo đơn; MCP chạy đúng nội dung thẻ đã hiện, từ chối nếu giỏ/giá đã đổi, và mỗi xác nhận chỉ dùng một lần. Xác nhận hết hạn sau 30 phút.
+3. Đơn đặt qua chat xem được ở `/orders/<mã>`; đơn thanh toán online chờ thanh toán ở đó. `Hủy đơn FT-… ` cũng cần bấm Xác nhận, chỉ cho đơn đang xử lý và chưa thanh toán.
+4. Tra đơn/đổi/trả cần xác minh chủ đơn: đơn đặt từ chính trình duyệt này, hoặc đúng số điện thoại đặt hàng (sai quá 5 lần thì tạm khóa theo cuộc trò chuyện và theo mã đơn).
+5. Đơn `FT-2026-1013` có cùng sản phẩm `SM-001` ở hai dòng (size M và L): agent phải hỏi khách xử lý dòng nào trước khi đề xuất đổi/trả.
+
+Các đơn demo: 1001/1002/1009/1010/1012 đổi/trả hợp lệ; 1013 hai dòng cùng sản phẩm; 1003 quá 7 ngày; 1004 đang giao; 1005 đang xử lý; 1006 tất và phụ kiện đã mở; 1007 giảm giá 40%; 1008 đã có yêu cầu đổi; 1011 đã hủy. Sơ đồ graph, state, vị trí `interrupt()` và quyền từng tool: [docs/agent-graph.md](docs/agent-graph.md).
 
 ## Kiểm tra
 
@@ -45,7 +55,7 @@ pnpm typecheck
 pnpm test                                 # Vitest, không gọi OpenAI (graph dùng model/MCP giả)
 pnpm build
 docker compose exec web pnpm eval:rag     # golden set Week 6 qua graph, gọi OpenAI thật
-docker compose exec web pnpm eval:agent   # golden set Agent 34 case, gọi OpenAI thật, reset đơn demo
+docker compose exec web pnpm eval:agent   # golden set Agent 46 case, gọi OpenAI thật, reset đơn demo
 ```
 
 Hai lệnh eval chạy trong container vì cần database `db` và MCP server. Kết quả ghi vào `data/eval-results/<timestamp>.json`; bản dùng để nộp nằm ở [evals/results/](evals/results/) (baseline Week 6, Week 6 qua graph, Agent Week 7); dùng `traceId` của từng case để tra `data/logs/web.ndjson`. Sau khi đổi model, prompt, chunking hoặc tham số retrieval phải chạy lại eval.

@@ -1,71 +1,11 @@
 import { createHash } from 'node:crypto';
-import * as XLSX from 'xlsx';
 import type { ParsedChunk } from '@/features/knowledge/types';
+import { slugify } from '@/lib/slug';
 import { estimateTokens } from '@/lib/tokens';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 const MAX_POLICY_CHUNK_TOKENS = 800;
-
-const requiredProductColumns = ['product_id', 'product_name', 'price_vnd', 'updated_at'] as const;
-
-const splitList = (value: string) => value.split(',').map((item) => item.trim()).filter(Boolean);
-
-export function parseCatalog(buffer: Buffer): ParsedChunk[] {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: true });
-  const worksheet = workbook.Sheets['Catalog sản phẩm'];
-  if (!worksheet) throw new Error('Không tìm thấy sheet Catalog sản phẩm.');
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' });
-  if (!rows.length) throw new Error('Catalog không có sản phẩm.');
-
-  return rows.map((row) => {
-    for (const column of requiredProductColumns) {
-      if (!String(row[column] ?? '').trim()) throw new Error(`Thiếu cột hoặc giá trị ${column}.`);
-    }
-    const productId = String(row.product_id).trim();
-    const sizes = String(row.sizes ?? row.size ?? '').trim();
-    const colors = String(row.colors ?? row.color ?? '').trim();
-    const metadata = {
-      product_id: productId,
-      category: String(row.category ?? '').trim(),
-      updated_at: String(row.updated_at).trim(),
-      price_vnd: Number(row.price_vnd),
-      stock_status: String(row.stock_status ?? '').trim(),
-      sizes: splitList(sizes),
-      colors: splitList(colors),
-    };
-    const content = [
-      `[Mã: ${productId}]`,
-      `Tên sản phẩm: ${String(row.product_name).trim()}`,
-      `Danh mục: ${metadata.category}`,
-      `Giá: ${Number(row.price_vnd).toLocaleString('vi-VN')} VNĐ`,
-      `Mô tả: ${String(row.description ?? '').trim()}`,
-      `Size: ${sizes}`,
-      `Màu: ${colors}`,
-      `Chất liệu: ${String(row.material ?? '').trim()}`,
-      `Tình trạng: ${metadata.stock_status}`,
-      `Cập nhật: ${metadata.updated_at}`,
-    ].join('\n');
-    return {
-      sourceId: `product:${productId}`,
-      sourceType: 'product' as const,
-      title: String(row.product_name).trim(),
-      content,
-      metadata,
-      contentHash: hash(content),
-    };
-  });
-}
-
-function slugify(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[đĐ]/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '') || 'khac';
-}
 
 /** Splits text on sentence boundaries so no piece exceeds MAX_POLICY_CHUNK_TOKENS. */
 function splitByTokens(text: string, separator: RegExp, joiner: string) {

@@ -4,15 +4,22 @@ import { join } from 'node:path';
 import { sql } from '@/db/client';
 import { pendingApprovalForThread } from '@/features/agent/approvals';
 import { resetAgentRuntime } from '@/features/agent/runtime';
-import { decideAndResume, runChatTurn, type TurnResult } from '@/features/agent/session';
+import { pendingConfirmationForThread } from '@/features/agent/confirmations';
+import { decideAndResume, decideAndResumeConfirmation, runChatTurn, type TurnResult } from '@/features/agent/session';
 import { resetSeedOrders } from '@/features/orders/repository';
 import { env } from '@/lib/env';
 
-type Step = { user: string } | { decision: 'approved' | 'rejected' | 'expired'; note?: string } | { restart: true };
+type Step = { user: string } | { decision: 'approved' | 'rejected' | 'expired'; note?: string } | { confirm: 'confirmed' | 'cancelled' } | { restart: true };
 type Expect = {
   finalKind?: TurnResult['kind'];
   route?: string;
   pendingAction?: 'exchange_size' | 'return';
+  /** The customer is being asked to confirm this action (buttons Xác nhận / Huỷ). */
+  pendingConfirmation?: 'checkout' | 'cancel_order';
+  /** Customer orders created by this case (not the demo ones), and lines left in the cart. */
+  orders?: number;
+  cartLines?: number;
+  orderStatus?: { orderId: string; status: string };
   toolsInclude?: string[];
   toolsExclude?: string[];
   anyKeywords?: string[];
@@ -32,7 +39,21 @@ async function requestCount(orderId?: string) {
   return row.count;
 }
 
+/** Removes what shopping cases create (orders, carts) and puts their stock back, so cases stay independent. */
+async function cleanShopping() {
+  await sql`
+    UPDATE product_variants v SET stock = stock + oi.quantity
+    FROM order_items oi JOIN orders o ON o.id = oi.order_id
+    WHERE oi.variant_id = v.id AND o.visitor_id = ${visitorId} AND o.status <> 'cancelled'
+  `;
+  await sql`DELETE FROM orders WHERE visitor_id = ${visitorId}`;
+  await sql`DELETE FROM carts WHERE visitor_id = ${visitorId}`;
+}
+const customerOrderCount = async () => (await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM orders WHERE visitor_id = ${visitorId}`)[0].n;
+const cartLineCount = async () => (await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM cart_items WHERE visitor_id = ${visitorId}`)[0].n;
+
 async function runCase(test: Case) {
+  await cleanShopping();
   await resetSeedOrders();
   const threadId = randomUUID();
   await sql`INSERT INTO chat_threads (id, visitor_id) VALUES (${threadId}, ${visitorId})`;
@@ -50,6 +71,11 @@ async function runCase(test: Case) {
     const before = await requestCount();
     if ('user' in step) {
       final = await runChatTurn({ threadId, visitorId, message: step.user, traceId });
+    } else if ('confirm' in step) {
+      const pending = await pendingConfirmationForThread(threadId);
+      if (!pending) { violations.push(`no pending confirmation for ${step.confirm}`); continue; }
+      const outcome = await decideAndResumeConfirmation({ confirmationId: pending.id, threadId, decision: step.confirm, traceId });
+      if (outcome.resumed) final = outcome.result;
     } else {
       const pending = await pendingApprovalForThread(threadId);
       if (!pending) { violations.push(`no pending approval for decision ${step.decision}`); continue; }
@@ -58,7 +84,8 @@ async function runCase(test: Case) {
     }
     if (final && final.kind !== 'blocked') tools.push(...final.toolCalls);
     if (final?.kind === 'answer') tokens += final.answer.diagnostics.inputTokens + final.answer.diagnostics.outputTokens;
-    // Invariant for every case: nothing is written while a request is only proposed.
+    // Invariants for every case: nothing is written while a request is only proposed, and no order exists before the customer confirms.
+    if (final?.kind === 'confirm' && (await customerOrderCount()) !== 0) violations.push('order created before customer confirmation');
     if (final && final.kind !== 'answer' && (await requestCount()) !== before) violations.push('write happened before approval');
     if ('user' in step && final?.kind === 'answer' && (await requestCount()) !== before) violations.push('write happened without an approval decision');
   }
@@ -69,6 +96,13 @@ async function runCase(test: Case) {
   if (expect.finalKind && final?.kind !== expect.finalKind) failures.push(`kind ${final?.kind} ≠ ${expect.finalKind}`);
   if (expect.route && (final?.kind !== 'answer' || final.answer.diagnostics.route !== expect.route)) failures.push(`route ≠ ${expect.route}`);
   if (expect.pendingAction && (final?.kind !== 'pending' || final.approval.action !== expect.pendingAction)) failures.push(`pending action ≠ ${expect.pendingAction}`);
+  if (expect.pendingConfirmation && (final?.kind !== 'confirm' || final.confirmation.action !== expect.pendingConfirmation)) failures.push(`pending confirmation ≠ ${expect.pendingConfirmation}`);
+  if (expect.orders !== undefined && (await customerOrderCount()) !== expect.orders) failures.push(`customer orders = ${await customerOrderCount()} ≠ ${expect.orders}`);
+  if (expect.cartLines !== undefined && (await cartLineCount()) !== expect.cartLines) failures.push(`cart lines = ${await cartLineCount()} ≠ ${expect.cartLines}`);
+  if (expect.orderStatus) {
+    const [row] = await sql<{ status: string }[]>`SELECT status FROM orders WHERE id = ${expect.orderStatus.orderId}`;
+    if (row?.status !== expect.orderStatus.status) failures.push(`order ${expect.orderStatus.orderId} is ${row?.status} ≠ ${expect.orderStatus.status}`);
+  }
   for (const tool of expect.toolsInclude ?? []) if (!tools.includes(tool)) failures.push(`missing tool ${tool}`);
   for (const tool of expect.toolsExclude ?? []) if (tools.includes(tool)) failures.push(`unexpected tool ${tool}`);
   if (expect.anyKeywords?.length && !expect.anyKeywords.some((keyword) => lower(answerText).includes(lower(keyword)))) failures.push(`none of keywords ${JSON.stringify(expect.anyKeywords)}`);
@@ -107,6 +141,7 @@ async function main() {
     const last = results.at(-1)!;
     console.log(`${last.passed ? 'PASS' : 'FAIL'} ${last.id}${last.passed ? '' : ` — ${last.error ?? last.failures.join('; ')}`}`);
   }
+  await cleanShopping();
   await resetSeedOrders();
 
   const latencies = results.map((item) => item.latencyMs).sort((a, b) => a - b);
