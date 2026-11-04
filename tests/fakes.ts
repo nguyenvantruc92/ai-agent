@@ -4,13 +4,21 @@ import type { ConfirmationInput, ConfirmationStore } from '@/features/agent/conf
 import type { CreatedRequest, ToolGateway } from '@/features/agent/gateway';
 import type { AgentCart } from '@/features/agent/shop-types';
 import type { AgentModel } from '@/features/agent/graph';
-import type { answerWithRag } from '@/features/chat/rag-answer';
+import type { AgentRuntimeConfig } from '@/features/ai/agents';
+import { buildAgentTools, builtinToolNames, type ExternalToolSpec } from '@/features/agent/tools';
 import { idempotencyKey } from '@/features/orders/policy';
 import { demoPhone } from '@/features/orders/phone';
 import { seedOrders } from '@/features/orders/seed-data';
 import type { Order, Product, RequestProposal } from '@/features/orders/types';
 
 export const NOW = new Date('2026-10-27T10:00:00Z');
+
+/** The default agent as the seed creates it: every built-in tool plus the "Chính sách" scope tool (search_policy). */
+export function testAgent(overrides: Partial<AgentRuntimeConfig> = {}): AgentRuntimeConfig {
+  const scopes = [{ id: 'scope-policy', name: 'Chính sách', toolName: 'search_policy', description: 'Tìm chính sách và FAQ của cửa hàng.' }];
+  const enabledBuiltin = new Set(builtinToolNames);
+  return { agentId: 'agent-1', agentName: 'Test', instructions: 'Bạn là trợ lý thử nghiệm.', model: 'test-model', temperature: 0.3, maxSteps: 5, maxToolCalls: 5, enabledBuiltin, scopes, externalTools: new Map(), tools: buildAgentTools(enabledBuiltin, scopes), ...overrides };
+}
 const DAY = 24 * 60 * 60 * 1_000;
 
 export const products: Record<string, Product> = {
@@ -27,6 +35,7 @@ export function fakeGateway() {
   const placed: { confirmationId: string; code: string; lines: typeof cart }[] = [];
   const cancelled: { confirmationId: string; code: string }[] = [];
   const cancelledCodes = new Set<string>();
+  const external: { serverId: string; toolName: string; args: Record<string, unknown> }[] = [];
   const order = (id: string): Order | null => {
     const seed = seedOrders.find((item) => item.id === id);
     if (!seed) return null;
@@ -74,7 +83,8 @@ export function fakeGateway() {
   const gateway: ToolGateway = {
     lookupOrder: async (id) => order(id),
     lookupProduct: async (id) => products[id] ?? null,
-    searchPolicy: async () => [{ source_id: 'policy:chinh-sach-doi-size-va-doi-san-pham:1', title: 'Thời hạn đổi size', content: 'Đổi trong 7 ngày.', similarity: 0.6, updated_at: '2026-10-27' }],
+    callExternal: async (serverId, toolName, args) => { external.push({ serverId, toolName, args }); return { text: `kết quả ${toolName}: 25 độ`, isError: false, truncated: false }; },
+    searchKnowledge: async () => [{ source_id: 'policy:chinh-sach-doi-size-va-doi-san-pham:1', title: 'Thời hạn đổi size', content: 'Đổi trong 7 ngày.', similarity: 0.6, updated_at: '2026-10-27' }],
     createRequest: async (proposal, approvalId) => {
       const key = idempotencyKey(proposal);
       const existing = requests.get(key);
@@ -111,7 +121,7 @@ export function fakeGateway() {
       return { status: 'cancelled', source_id: `order:${code}`, order_code: code };
     },
   };
-  return { gateway, created, cart, placed, cancelled };
+  return { gateway, created, cart, placed, cancelled, external };
 }
 
 export function fakeConfirmations() {
@@ -158,10 +168,17 @@ export function scriptedModel(steps: Step[]) {
   return { model, seen, remaining: steps };
 }
 
-export const fakeRag: typeof answerWithRag = async ({ message }) => ({
-  answer: `RAG: ${message}`,
-  citedSourceIds: ['product:PL-002'],
-  insufficientInformation: false,
-  sources: [{ id: 'product:PL-002', title: 'Áo polo pique trắng', type: 'product' }],
-  diagnostics: { route: 'rag', validation: 'valid', promptSourceIds: ['product:PL-002'], modelCitations: ['product:PL-002'], inputTokens: 0, outputTokens: 0 },
-});
+/** A tool of an external MCP server ("Thời tiết") as the runtime would load it. */
+export function weatherTool(requiresApproval: boolean, overrides: Partial<ExternalToolSpec> = {}): ExternalToolSpec {
+  return {
+    modelName: 'weather__get_weather', serverId: 'server-weather', serverName: 'Thời tiết', serverSlug: 'weather', toolName: 'get_weather',
+    description: 'Thời tiết theo thành phố', inputSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+    requiresApproval, ...overrides,
+  };
+}
+
+/** The default test agent plus external tools. */
+export function agentWithExternal(...specs: ExternalToolSpec[]): AgentRuntimeConfig {
+  const base = testAgent();
+  return { ...base, externalTools: new Map(specs.map((spec) => [spec.modelName, spec])), tools: buildAgentTools(base.enabledBuiltin, base.scopes, specs) };
+}

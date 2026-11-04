@@ -43,8 +43,9 @@ export async function threadMessages(threadId: string) {
   return sql<StoredMessage[]>`SELECT id, role, content, citations, insufficient_information, metadata, created_at FROM chat_messages WHERE thread_id = ${threadId} ORDER BY created_at`;
 }
 
-const pendingText = (approval: ApprovalInterrupt) =>
-  `Mình đã kiểm tra đơn hàng và điều kiện đổi/trả: ${approval.summary}. Yêu cầu đã được chuyển cho nhân viên duyệt; Fashion Tomodev sẽ phản hồi ngay tại cuộc trò chuyện này khi có kết quả.`;
+const pendingText = (approval: ApprovalInterrupt) => approval.action === 'mcp_tool'
+  ? `Yêu cầu “${approval.summary}” đã được chuyển cho nhân viên duyệt; Fashion Tomodev sẽ phản hồi ngay tại cuộc trò chuyện này khi có kết quả.`
+  : `Mình đã kiểm tra đơn hàng và điều kiện đổi/trả: ${approval.summary}. Yêu cầu đã được chuyển cho nhân viên duyệt; Fashion Tomodev sẽ phản hồi ngay tại cuộc trò chuyện này khi có kết quả.`;
 
 /** The card text the customer sees above the Xác nhận / Huỷ buttons; fixed wording, not model-written. */
 export const confirmationText = (confirmation: ConfirmInterrupt) =>

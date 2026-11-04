@@ -12,7 +12,7 @@ const includesText = (haystack: string, needle: string) => haystack.toLocaleLowe
 const average = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 const round = (value: number | null) => value === null ? null : Number(value.toFixed(4));
 
-/** Runs every turn through the production LangGraph workflow (router → rag/agent), like /api/chat. */
+/** Runs every turn through the production LangGraph workflow (precheck → agent loop), like /api/chat. */
 async function runCase(test: Case) {
   const startedAt = Date.now();
   const threadId = randomUUID();

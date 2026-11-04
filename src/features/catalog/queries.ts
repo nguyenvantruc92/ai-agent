@@ -109,6 +109,17 @@ export async function listStoreProducts(query: StoreListQuery) {
   return { items: rows.map(toCard), total, page: query.page, pageSize: query.pageSize, pageCount: Math.max(1, Math.ceil(total / query.pageSize)) };
 }
 
+/** Visible products by code, in the order given (unknown, hidden or over-budget codes are skipped). */
+export async function listStoreCardsByCodes(codes: string[], maxPriceVnd?: number | null) {
+  if (!codes.length) return [];
+  const rows = await sql<CardRow[]>`
+    SELECT ${cardColumns} FROM products p JOIN categories c ON c.id = p.category_id
+    WHERE ${visible} AND p.code = ANY(${sql.array(codes)}::text[]) ${maxPriceVnd ? sql`AND p.price_vnd <= ${maxPriceVnd}` : sql``}
+  `;
+  const byCode = new Map(rows.map((row) => [row.code, toCard(row)]));
+  return codes.flatMap((code) => byCode.get(code) ?? []);
+}
+
 /** Price bounds of the visible catalogue, used to hint the price filter. */
 export async function storePriceRange(category?: string) {
   const [row] = await sql<{ min: number | null; max: number | null }[]>`

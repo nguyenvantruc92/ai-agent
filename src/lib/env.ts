@@ -4,8 +4,11 @@ const schema = z.object({
   // A local fallback lets `next build` load route modules without credentials.
   // Docker/local runtime should still set DATABASE_URL explicitly through .env.
   DATABASE_URL: z.string().min(1).default('postgres://fashion:fashion@localhost:5432/fashion'),
+  // Fallback only: the key saved in Admin → Cài đặt takes precedence (see features/settings/openai-key.ts).
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4.1-2025-04-14'),
+  // Extra chat models an agent may be set to (comma-separated). OPENAI_CHAT_MODEL is always allowed.
+  OPENAI_ALLOWED_MODELS: z.string().default(''),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(1536),
   OPENAI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
@@ -32,11 +35,18 @@ const schema = z.object({
   UPLOAD_RATE_LIMIT: z.coerce.number().int().positive().default(10),
   UPLOAD_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(3600),
   MCP_URL: z.string().url().default('http://mcp:3001/mcp'),
+  // Comma-separated host or host:port entries that MCP server URLs may point at even when they resolve to a private address.
+  // The host of MCP_URL (the built-in server) is always allowed.
+  MCP_ALLOWED_HOSTS: z.string().default(''),
+  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  MCP_MAX_RESPONSE_BYTES: z.coerce.number().int().positive().default(2_000_000),
   MCP_PORT: z.coerce.number().int().positive().default(3001),
   AGENT_MAX_STEPS: z.coerce.number().int().positive().max(20).default(5),
   AGENT_MAX_TOOL_CALLS: z.coerce.number().int().positive().max(20).default(5),
   ADMIN_PASSWORD_HASH: z.string().optional(),
   ADMIN_SESSION_SECRET: z.string().min(24).optional(),
+  // Encrypts secrets stored in the database; defaults to ADMIN_SESSION_SECRET.
+  SETTINGS_ENCRYPTION_KEY: z.string().min(16).optional(),
 });
 
 export const env = schema.parse(process.env);

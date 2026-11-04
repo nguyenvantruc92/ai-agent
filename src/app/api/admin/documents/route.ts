@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { catalogMime } from '@/features/catalog/sync';
 import { createDocument, listDocuments } from '@/features/knowledge/repository';
+import { scopesByDocument } from '@/features/knowledge/scopes';
 import { saveUpload, validateUpload } from '@/features/knowledge/files';
 import { requireAdmin, jsonError } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +12,9 @@ import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 export async function GET() {
   const denied = await requireAdmin();
   if (denied) return denied;
-  return NextResponse.json(await listDocuments());
+  // The product catalog document only backs product search; it is not a knowledge file, so it is not listed here.
+  const [documents, scopes] = await Promise.all([listDocuments(), scopesByDocument()]);
+  return NextResponse.json(documents.filter((document) => document.mime_type !== catalogMime).map((document) => ({ ...document, scopes: scopes.get(document.id) ?? [] })));
 }
 
 export async function POST(request: Request) {

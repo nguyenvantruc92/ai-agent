@@ -4,15 +4,16 @@ import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useConfirm, useToast } from '@/components/admin/feedback';
-import { EmptyState, PageHeader, td, th } from '@/components/admin/page-header';
+import { EmptyState, td, th } from '@/components/admin/page-header';
 import { StatusBadge } from '@/components/status-badge';
+import { Badge } from '@/components/admin-ui/badge';
 import { Button } from '@/components/admin-ui/button';
 import { DatabaseIcon, SearchIcon, UploadIcon } from '@/components/admin-ui/icons';
 import { Input } from '@/components/admin-ui/input';
 import { cn } from '@/lib/cn';
 import { friendlyError } from '@/lib/friendly-error';
 
-type Document = { id: string; original_filename: string; status: string; created_at: string; version?: number; version_status?: string; active_version?: number | null; error?: string | null };
+type Document = { id: string; scopes?: { id: string; name: string }[]; original_filename: string; status: string; created_at: string; version?: number; version_status?: string; active_version?: number | null; error?: string | null };
 type RetrievalResult = { traceId: string; chunks: { source_id: string; title: string; similarity: number }[]; queries: { name: string; thresholded: boolean; results: { id: string; score: number }[] }[] };
 
 export default function KnowledgeClient() {
@@ -49,7 +50,7 @@ export default function KnowledgeClient() {
     const response = await fetch('/api/admin/documents', { method: 'POST', body });
     const data = await response.json().catch(() => ({})) as { error?: string; imported?: { products: number } };
     if (!response.ok) toast('error', data.error ?? 'Upload thất bại.');
-    else toast('success', data.imported ? `Đã import ${data.imported.products} sản phẩm từ XLSX.` : 'Đã upload, đang xếp hàng index.');
+    else toast('success', data.imported ? `Đã import ${data.imported.products} sản phẩm từ XLSX.` : 'Đã upload, đang xếp hàng index. Nhớ gán file vào một scope để AI tra cứu được.');
     await load(); setBusy(false); event.target.value = '';
   }
   async function reindex(id: string) { await fetch(`/api/admin/documents/${id}/reindex`, { method: 'POST' }); toast('success', 'Đã xếp hàng index lại.'); await load(); }
@@ -70,23 +71,24 @@ export default function KnowledgeClient() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Knowledge" description="PDF chính sách được index bởi worker; XLSX sẽ import vào danh sách sản phẩm. Chat dùng version active cho đến khi version mới ready."
-        actions={
-          <label className={cn('inline-flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600', busy && 'pointer-events-none opacity-60')}>
-            <UploadIcon className="size-5" />{busy ? 'Đang upload…' : 'Upload PDF/XLSX'}
-            <input className="sr-only" type="file" accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} />
-          </label>
-        } />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">PDF chính sách được worker index; chat dùng version active cho đến khi version mới ready. Một file chỉ được AI tra cứu khi thuộc ít nhất một scope được gán cho Agent. File XLSX sẽ import vào danh sách sản phẩm.</p>
+        <label className={cn('inline-flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600', busy && 'pointer-events-none opacity-60')}>
+          <UploadIcon className="size-5" />{busy ? 'Đang upload…' : 'Upload PDF/XLSX'}
+          <input className="sr-only" type="file" accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} />
+        </label>
+      </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px]">
-            <thead className="border-b border-gray-100 dark:border-white/5"><tr><th className={th}>File</th><th className={th}>Active</th><th className={th}>Version mới nhất</th><th className={th}>Thao tác</th></tr></thead>
+            <thead className="border-b border-gray-100 dark:border-white/5"><tr><th className={th}>File</th><th className={th}>Scope</th><th className={th}>Active</th><th className={th}>Version mới nhất</th><th className={th}>Thao tác</th></tr></thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-              {loaded && documents.length === 0 && <tr><td colSpan={4}><EmptyState icon={<DatabaseIcon />} title="Chưa có tài liệu" hint="Upload PDF chính sách để chatbot trả lời về giao hàng, đổi trả…" /></td></tr>}
+              {loaded && documents.length === 0 && <tr><td colSpan={5}><EmptyState icon={<DatabaseIcon />} title="Chưa có tài liệu" hint="Upload PDF chính sách để chatbot trả lời về giao hàng, đổi trả…" /></td></tr>}
               {documents.map((doc) => (
                 <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-white/2">
                   <td className={td}><Link className="font-medium text-gray-800 hover:underline dark:text-white/90" href={`/admin/knowledge/${doc.id}`}>{doc.original_filename}</Link>{doc.error && <p className="mt-1 text-theme-xs text-red-500">{friendlyError(doc.error)}</p>}</td>
+                  <td className={td}>{doc.scopes?.length ? <span className="inline-flex flex-wrap gap-1.5">{doc.scopes.map((scope) => <Link key={scope.id} href={`/admin/knowledge/scopes/${scope.id}`}><Badge color="gray" size="sm">{scope.name}</Badge></Link>)}</span> : <Badge color="warning" size="sm">Chưa thuộc scope</Badge>}</td>
                   <td className={td}>{doc.active_version ? `v${doc.active_version}` : '—'}</td>
                   <td className={td}><span className="inline-flex items-center gap-2">v{doc.version ?? 1} <StatusBadge status={doc.version_status ?? doc.status} /></span></td>
                   <td className={td}><Button size="xs" variant="ghost" onClick={() => void reindex(doc.id)}>Re-index</Button><Button size="xs" variant="ghost" className="text-red-500 hover:text-red-600" onClick={() => void remove(doc.id)}>Xóa</Button></td>
@@ -99,6 +101,7 @@ export default function KnowledgeClient() {
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 dark:border-gray-800 dark:bg-white/3">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">Kiểm tra retrieval</h2>
+        <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Tìm trên toàn bộ tài liệu, không lọc theo scope. Để thử một scope, mở scope đó.</p>
         <form className="mt-4 flex gap-2" onSubmit={testRetrieval}>
           <div className="relative flex-1"><SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-gray-400" /><Input className="pl-11" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ví dụ: Phí giao hàng bao nhiêu?" /></div>
           <Button type="submit" size="lg">Chạy</Button>

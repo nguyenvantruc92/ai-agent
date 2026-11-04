@@ -106,7 +106,7 @@ Mức này giúp câu trả lời tiếng Việt tự nhiên hơn trong khi các
 
 ### 6.5. System prompt RAG
 
-**Đã tạo:** prompt được version trong [`../prompts/fashion-tomodev-rag-system.md`](../prompts/fashion-tomodev-rag-system.md). Prompt quy định phạm vi, quy tắc nguồn, xử lý thiếu dữ liệu, chống prompt injection và ý nghĩa của từng trường output. v2 (2026-10-27) thêm quy tắc ghi kèm mã sản phẩm khi nhắc tới sản phẩm. Prompt Agent Week 7 ở [`../prompts/fashion-tomodev-agent-system.md`](../prompts/fashion-tomodev-agent-system.md).
+**Đã tạo:** prompt được version trong [`../prompts/fashion-tomodev-rag-system.md`](../prompts/fashion-tomodev-rag-system.md). Prompt quy định phạm vi, quy tắc nguồn, xử lý thiếu dữ liệu, chống prompt injection và ý nghĩa của từng trường output. v2 (2026-10-27) thêm quy tắc ghi kèm mã sản phẩm khi nhắc tới sản phẩm. Prompt Agent Week 7 gồm [`../prompts/fashion-tomodev-agent-core.md`](../prompts/fashion-tomodev-agent-core.md) (luật khóa) và [`../prompts/fashion-tomodev-agent-instructions.md`](../prompts/fashion-tomodev-agent-instructions.md) (hướng dẫn mặc định, sửa được trong Admin → AI Agents).
 
 ### 6.5a. Response transport và structured output
 

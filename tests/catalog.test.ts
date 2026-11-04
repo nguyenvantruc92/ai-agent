@@ -100,7 +100,7 @@ describe('slugify', () => {
 describe('friendlyError', () => {
   it('turns a missing OpenAI key into an actionable message and shortens long errors', async () => {
     const { friendlyError } = await import('@/lib/friendly-error');
-    expect(friendlyError("You didn't provide an API key. You need to provide your API key in an Authorization header")).toContain('OPENAI_API_KEY');
+    expect(friendlyError("You didn't provide an API key. You need to provide your API key in an Authorization header")).toContain('Admin → Cài đặt');
     expect(friendlyError('x'.repeat(500))).toHaveLength(201);
     expect(friendlyError('short')).toBe('short');
   });

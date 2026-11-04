@@ -1,5 +1,6 @@
 import { applyMigrations } from '@/db/apply-migrations';
 import { sql } from '@/db/client';
+import { ensureAiDefaults } from '@/features/ai/seed';
 import { createCheckpointer, createStore } from '@/features/agent/runtime';
 import { seedCatalogIfEmpty } from '@/features/catalog/import';
 import { resetSeedOrders } from '@/features/orders/repository';
@@ -10,6 +11,7 @@ async function main() {
   await sql`SELECT pg_advisory_lock(7242001)`;
   try {
     await applyMigrations(console.log);
+    await ensureAiDefaults();
 
     // LangGraph checkpoint/store tables live in their own `langgraph` schema.
     const checkpointer = createCheckpointer();

@@ -11,6 +11,12 @@ export type RetrievalResult = { traceId: string; chunks: DbChunk[]; queries: Que
 
 const vectorLiteral = (vector: number[]) => `[${vector.join(',')}]`;
 
+/** Embeds a short query with the configured embedding model (same settings as retrieval). */
+export async function embedQuery(value: string, timeoutMs: number = env.OPENAI_TIMEOUT_MS) {
+  const { embedding, usage } = await embed({ model: openai.embedding(env.OPENAI_EMBEDDING_MODEL), value, maxRetries: env.OPENAI_MAX_RETRIES, abortSignal: AbortSignal.timeout(timeoutMs) });
+  return { embedding, literal: vectorLiteral(embedding), tokens: usage.tokens };
+}
+
 function search(literal: string, filter: ReturnType<typeof sql>) {
   return sql<DbChunk[]>`
     SELECT c.id, c.source_id, c.source_type, c.title, c.content, c.metadata,
@@ -23,12 +29,28 @@ function search(literal: string, filter: ReturnType<typeof sql>) {
   `;
 }
 
+export type RetrievalScope = {
+  documentIds: string[];
+  /** Also search the shipping-policy chunk the system generates from Cài đặt (stored in the catalog document). */
+  includeSystemPolicy?: boolean;
+};
+
+/** Documents (and optionally the generated shipping chunk) a knowledge scope may search. */
+function scopeFilter(scope: RetrievalScope): ReturnType<typeof sql> {
+  const ids = sql.array(scope.documentIds, 2950);
+  return scope.includeSystemPolicy
+    ? sql`AND (d.id = ANY(${ids}::uuid[]) OR (d.storage_key = 'db:catalog' AND c.source_type = 'policy'))`
+    : sql`AND d.id = ANY(${ids}::uuid[])`;
+}
+
 /**
  * `query` is what gets embedded (may carry follow-up context); keyword and
  * category detection only look at the user's current `message`.
+ * With `scope`, only that scope's documents are searched (one semantic run) — used by knowledge-scope tools.
  */
-export async function retrieve(input: { query: string; message: string; traceId: string; policyOnly?: boolean }): Promise<RetrievalResult> {
+export async function retrieve(input: { query: string; message: string; traceId: string; scope?: RetrievalScope }): Promise<RetrievalResult> {
   const startedAt = Date.now();
+  if (input.scope && !input.scope.documentIds.length && !input.scope.includeSystemPolicy) return { traceId: input.traceId, chunks: [], queries: [] };
   const { embedding, usage } = await embed({
     model: openai.embedding(env.OPENAI_EMBEDDING_MODEL),
     value: input.query,
@@ -39,16 +61,17 @@ export async function retrieve(input: { query: string; message: string; traceId:
   const topics = detectPolicyTopics(input.message);
   const category = detectCategory(input.message);
 
-  const stockStatus = input.policyOnly ? undefined : detectStockStatus(input.message);
-  const runs: { name: string; thresholded: boolean; rows: Promise<DbChunk[]> }[] = input.policyOnly
-    ? [{ name: 'policy-only', thresholded: true, rows: search(literal, sql`AND c.source_type = 'policy'`) }]
+  const scoped = Boolean(input.scope);
+  const stockStatus = scoped ? undefined : detectStockStatus(input.message);
+  const runs: { name: string; thresholded: boolean; rows: Promise<DbChunk[]> }[] = input.scope
+    ? [{ name: 'scope', thresholded: true, rows: search(literal, scopeFilter(input.scope)) }]
     : [{ name: 'semantic', thresholded: true, rows: search(literal, sql``) }];
   // Placed first so the round-robin merge gives the stock filter priority over loose semantic hits.
   if (stockStatus) runs.unshift({ name: `stock:${stockStatus}`, thresholded: false, rows: search(literal, sql`AND c.source_type = 'product' AND c.metadata->>'stock_status' = ${stockStatus}`) });
-  if (!input.policyOnly && topics.length) runs.push({ name: `policy:${topics.join(',')}`, thresholded: true, rows: search(literal, sql`AND c.source_type = 'policy'`) });
+  if (!scoped && topics.length) runs.push({ name: `policy:${topics.join(',')}`, thresholded: true, rows: search(literal, sql`AND c.source_type = 'policy'`) });
   // Category and overview searches are ranked by real similarity but exempt from the threshold.
-  if (!input.policyOnly && category) runs.push({ name: `category:${category}`, thresholded: false, rows: search(literal, sql`AND c.source_type = 'product' AND c.metadata->>'category' = ${category}`) });
-  if (!input.policyOnly && isBroadCatalogQuestion(input.message)) runs.push({ name: 'catalog-overview', thresholded: false, rows: search(literal, sql`AND c.source_type = 'policy' AND c.content ILIKE '%thời trang nam%'`) });
+  if (!scoped && category) runs.push({ name: `category:${category}`, thresholded: false, rows: search(literal, sql`AND c.source_type = 'product' AND c.metadata->>'category' = ${category}`) });
+  if (!scoped && isBroadCatalogQuestion(input.message)) runs.push({ name: 'catalog-overview', thresholded: false, rows: search(literal, sql`AND c.source_type = 'policy' AND c.content ILIKE '%thời trang nam%'`) });
 
   const results = await Promise.all(runs.map(async (run) => ({ ...run, rows: await run.rows })));
   // Round-robin by rank across queries (thresholded ones first) so every intent of a

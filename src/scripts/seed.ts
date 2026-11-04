@@ -5,13 +5,18 @@ import { createDocument, listDocuments, reindexDocument } from '@/features/knowl
 import { saveUpload, validateUpload } from '@/features/knowledge/files';
 import { sql } from '@/db/client';
 import { seedCatalogIfEmpty } from '@/features/catalog/import';
+import { seedProductImages } from '@/features/catalog/seed-images';
 import { queueCatalogReindex } from '@/features/catalog/sync';
+import { ensureAiDefaults, linkToPolicyScope } from '@/features/ai/seed';
 
-// Products are seeded into the database by `db:migrate`; only the policy PDF is a knowledge file.
-const seeds = ['faq_chinh_sach_cua_hang.pdf'];
+// Products are seeded into the database by `db:migrate`; only the policy PDFs are knowledge files.
+const seeds = ['faq_chinh_sach_cua_hang.pdf', 'faq_huong_dan_tra_don_va_dat_hang.pdf'];
 
 async function main() {
+  await ensureAiDefaults();
   if (await seedCatalogIfEmpty()) console.log('Imported demo catalog');
+  const images = await seedProductImages();
+  if (images) console.log(`Added ${images} product images`);
   console.log((await queueCatalogReindex()).queued ? 'Queued catalog' : 'Catalog already queued');
   const existing = await listDocuments();
   for (const filename of seeds) {
@@ -29,6 +34,7 @@ async function main() {
     const documentId = randomUUID();
     const saved = await saveUpload(documentId, extension, bytes);
     await createDocument({ id: documentId, original_filename: filename, storage_key: saved.key, mime_type: mime, content_hash: saved.contentHash });
+    await linkToPolicyScope(documentId);
     console.log(`Queued ${filename}`);
   }
   await sql.end();

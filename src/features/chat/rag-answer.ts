@@ -7,6 +7,7 @@ import { smallTalkAnswer } from '@/features/chat/small-talk';
 import { validateAnswer } from '@/features/chat/validation';
 import { buildRetrievalQuery, type PreviousSource } from '@/features/rag/query';
 import { retrieve } from '@/features/rag/retrieval';
+import { getOpenAiKey } from '@/features/settings/openai-key';
 import { env } from '@/lib/env';
 
 export type SourceRef = { id: string; title: string; type: string };
@@ -45,7 +46,7 @@ export async function answerWithRag(input: {
   const query = buildRetrievalQuery(input.message, input.previousSources);
   const retrieval = await retrieve({ query, message: input.message, traceId: input.traceId });
   if (!retrieval.chunks.length) return { ...insufficientAnswer, sources: [], diagnostics: { route: 'rag', validation: 'no_sources', ...emptyDiagnostics } };
-  if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY chưa được cấu hình.');
+  if (!(await getOpenAiKey())) throw new Error('Chưa cấu hình OpenAI API key (Admin → Cài đặt).');
 
   const { system, context, sourceIds } = await buildSystemPrompt(retrieval.chunks);
   let streamError: unknown;

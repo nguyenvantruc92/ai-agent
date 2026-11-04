@@ -4,9 +4,13 @@ import { env } from '@/lib/env';
 // Control characters other than newline/tab never carry meaning in a chat message.
 const stripControl = (value: string) => value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
-/** The browser may send only these two fields; sources, prompts, models and history are server-owned. */
+/**
+ * The browser may send only these fields; sources, prompts, models and history are server-owned. `agentId` is honoured only for
+ * an admin session (the "Chat thử" panel); for visitors it is rejected.
+ */
 export const chatRequestSchema = z.object({
   threadId: z.string().uuid().optional(),
+  agentId: z.string().uuid().optional(),
   message: z.string().transform(stripControl).pipe(z.string().trim().min(1).max(env.MAX_USER_MESSAGE_CHARS)),
 }).strict();
 

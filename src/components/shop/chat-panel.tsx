@@ -3,9 +3,11 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ChatProductCards } from '@/components/shop/chat-product-cards';
+import type { StoreCard } from '@/features/catalog/queries';
 
 type Source = { id: string; title: string; type: string };
-type Message = { role: 'user' | 'assistant'; answer: string; sources?: Source[]; checking?: boolean; status?: string; insufficient?: boolean; traceId?: string; kind?: string; confirmationId?: string };
+type Message = { role: 'user' | 'assistant'; answer: string; sources?: Source[]; products?: StoreCard[]; checking?: boolean; status?: string; insufficient?: boolean; traceId?: string; kind?: string; confirmationId?: string };
 type Pending = { id: string; summary?: string } | null;
 /** A checkout/cancel the customer must confirm with the buttons under the matching message. */
 type Confirmation = { id: string; action?: 'checkout' | 'cancel_order'; summary?: string; details?: string[] } | null;
@@ -27,6 +29,9 @@ const suggestions = [
 function Linkified({ text }: { text: string }) {
   return <>{text.split(/(\/orders\/FT-\d{4}-\d{4}|\/cart\b|\/checkout\b)/).map((part, index) => index % 2 ? <Link key={index} href={part} className="font-medium text-brand underline underline-offset-2">{part}</Link> : part)}</>;
 }
+
+/** Products shown as boxes are not repeated in the source list. */
+const sourcesBesidesProducts = (item: Message) => (item.sources ?? []).filter((source) => !(item.products?.length && source.type === 'product'));
 
 /** The "please confirm" message: a heading line followed by "• ..." detail lines, shown as a small receipt. */
 function ConfirmationCard({ text }: { text: string }) {
@@ -118,7 +123,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           if (type === 'complete') {
             const asked = data.pendingConfirmation as Confirmation;
             updateLast({
-              answer: data.answer as string, sources: data.sources as Source[], insufficient: data.insufficientInformation as boolean, traceId: data.traceId as string, checking: false, status: undefined,
+              answer: data.answer as string, sources: data.sources as Source[], products: (data.products as StoreCard[] | undefined) ?? [], insufficient: data.insufficientInformation as boolean, traceId: data.traceId as string, checking: false, status: undefined,
               kind: data.pendingApproval ? 'approval_pending' : asked ? 'confirmation_pending' : undefined, confirmationId: asked?.id,
             });
             if (data.pendingApproval) setApproval(data.pendingApproval as Pending);
@@ -150,6 +155,9 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     setMessages((current) => [...current, { role: 'user', answer: decision === 'confirm' ? 'Xác nhận' : 'Huỷ' }, { role: 'assistant', answer: '', checking: true, status: decision === 'confirm' ? 'Đang xử lý…' : undefined }]);
     await stream((signal) => fetch(`/api/chat/confirmations/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision }), signal }));
   }
+
+  /** On a phone the chat covers the whole screen, so minimise it to let the product page show; on desktop it stays beside the page. */
+  function openedProduct() { if (window.matchMedia('(max-width: 639px)').matches) onClose(); }
 
   function submit(event: FormEvent) { event.preventDefault(); void send(message.trim()); }
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -193,11 +201,12 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
                   <button type="button" disabled={pending} onClick={() => void decide('cancel')} className="h-9 flex-1 rounded-lg border border-line bg-white px-3 text-sm font-medium text-ink-soft hover:bg-sand disabled:opacity-50">Huỷ</button>
                 </div>
               )}
+              {item.products?.length ? <ChatProductCards products={item.products} onOpen={openedProduct} /> : null}
               {item.checking && <p className="mt-1.5 text-xs text-brand">{item.answer && item.status ? item.status : 'Đang kiểm tra nguồn…'}</p>}
-              {item.sources?.length ? (
+              {sourcesBesidesProducts(item).length ? (
                 <details className="mt-2 border-t border-line pt-2 text-xs text-ink-soft">
-                  <summary className="cursor-pointer font-medium select-none">Nguồn ({item.sources.length})</summary>
-                  <ul className="mt-1 space-y-0.5">{item.sources.map((source) => <li key={source.id}>{source.title}</li>)}</ul>
+                  <summary className="cursor-pointer font-medium select-none">Nguồn ({sourcesBesidesProducts(item).length})</summary>
+                  <ul className="mt-1 space-y-0.5">{sourcesBesidesProducts(item).map((source) => <li key={source.id}>{source.title}</li>)}</ul>
                 </details>
               ) : null}
               {item.traceId && <p className="mt-1.5 text-[10px] text-ink-muted">Trace: {item.traceId}</p>}

@@ -7,7 +7,7 @@ import { addToCartForThread, cancelOrderConfirmed, checkoutConfirmed, searchProd
 import { findProduct } from '@/features/catalog/repository';
 import { createApprovedRequest, findOrder } from '@/features/orders/repository';
 import { returnReasons } from '@/features/orders/types';
-import { retrieve } from '@/features/rag/retrieval';
+import { searchScopeForThread } from '@/features/knowledge/scopes';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
@@ -87,14 +87,11 @@ function buildServer() {
     inputSchema: { thread_id: threadId, confirmation_id: confirmationId },
     annotations: { ...write, destructiveHint: true },
   }, handler<{ thread_id: string; confirmation_id: string }>('cancel_order', (args) => cancelOrderConfirmed(args.thread_id, args.confirmation_id)));
-  server.registerTool('search_policy', {
-    description: 'Tìm các mục FAQ/chính sách liên quan bằng RAG.',
-    inputSchema: { query: z.string().min(2).max(500) },
+  server.registerTool('search_knowledge', {
+    description: 'Tìm trong một Knowledge scope (tài liệu admin gán) bằng RAG. Scope phải được bật cho Agent sở hữu cuộc trò chuyện.',
+    inputSchema: { thread_id: threadId, scope: z.string().regex(/^[a-z][a-z0-9_]{2,40}$/), query: z.string().min(2).max(500) },
     annotations: read,
-  }, handler<{ query: string }>('search_policy', async ({ query }, traceId) => {
-    const { chunks } = await retrieve({ query, message: query, traceId, policyOnly: true });
-    return chunks.map((chunk) => ({ source_id: chunk.source_id, title: chunk.title, content: chunk.content, similarity: Number(chunk.similarity.toFixed(4)), updated_at: String(chunk.metadata.updated_at ?? '') }));
-  }));
+  }, handler<{ thread_id: string; scope: string; query: string }>('search_knowledge', (args, traceId) => searchScopeForThread(args.thread_id, args.scope, args.query, traceId)));
   server.registerTool('create_exchange_request', {
     description: 'Tạo yêu cầu đổi size giả lập. Chỉ chạy khi approval_request_id đã được duyệt.',
     inputSchema: { order_id: z.string(), product_id: z.string(), requested_size: z.string().min(1).max(20), item_size: z.string().max(20).nullable().optional(), item_color: z.string().max(40).nullable().optional(), approval_request_id: approvalId },

@@ -2,7 +2,11 @@ import { sql } from '@/db/client';
 import { claimConfirmation, finishConfirmation, getConfirmation, type ConfirmationAction, type ConfirmationRow } from '@/features/agent/confirmations';
 import { cartFingerprint, orderFingerprint, type AgentCart, type AgentProductHit, type CancelPayload, type CheckoutPayload } from '@/features/agent/shop-types';
 import { storeListQuery } from '@/features/catalog/schemas';
-import { listStoreProducts } from '@/features/catalog/queries';
+import { mergeRanked } from '@/features/catalog/hybrid';
+import { listStoreCardsByCodes, listStoreProducts, type StoreCard } from '@/features/catalog/queries';
+import { embedQuery } from '@/features/rag/retrieval';
+import { env } from '@/lib/env';
+import { logger } from '@/lib/logger';
 import { checkout } from '@/features/orders/checkout';
 import { cancelCustomerOrder, getCustomerOrder } from '@/features/orders/customer-orders';
 import { normalizePhone } from '@/features/orders/customer-schemas';
@@ -25,19 +29,51 @@ export async function visitorOfThread(threadId: string) {
 
 // ───────────── Catalogue ─────────────
 
-/** Searches the storefront; trailing words are dropped until something matches ("áo polo trắng size M" still finds the polo). */
-export async function searchProductsForAgent(query: string, maxPriceVnd: number | null): Promise<AgentProductHit[]> {
+const toHit = (card: StoreCard): AgentProductHit => ({
+  source_id: `product:${card.code}`, product_id: card.code, name: card.name, category: card.categoryName,
+  price_vnd: card.priceVnd, compare_at_price_vnd: card.compareAtPriceVnd, colors: card.colors, sizes_in_stock: card.sizes, in_stock: !card.soldOut,
+});
+const HIT_LIMIT = 5;
+const SEMANTIC_TIMEOUT_MS = 6_000;
+
+/** Keyword search; trailing words are dropped until something matches ("áo polo trắng size M" still finds the polo). */
+async function keywordProducts(query: string, maxPriceVnd: number | null): Promise<StoreCard[]> {
   const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 6);
   for (let count = words.length; count >= 1; count -= 1) {
-    const result = await listStoreProducts(storeListQuery.parse({ q: words.slice(0, count).join(' '), maxPrice: maxPriceVnd ?? undefined, pageSize: 5 }));
-    if (result.items.length) {
-      return result.items.map((card) => ({
-        source_id: `product:${card.code}`, product_id: card.code, name: card.name, category: card.categoryName,
-        price_vnd: card.priceVnd, compare_at_price_vnd: card.compareAtPriceVnd, colors: card.colors, sizes_in_stock: card.sizes, in_stock: !card.soldOut,
-      }));
-    }
+    const result = await listStoreProducts(storeListQuery.parse({ q: words.slice(0, count).join(' '), maxPrice: maxPriceVnd ?? undefined, pageSize: HIT_LIMIT }));
+    if (result.items.length) return result.items;
   }
   return [];
+}
+
+/** Meaning-based search over the product chunks that mirror the catalogue ("áo đi làm màu nhã"). Empty when embeddings are unavailable. */
+async function semanticProductCodes(query: string): Promise<string[]> {
+  try {
+    const { literal } = await embedQuery(query, SEMANTIC_TIMEOUT_MS);
+    const rows = await sql<{ source_id: string; similarity: number }[]>`
+      SELECT c.source_id, 1 - (c.embedding <=> ${literal}::vector) AS similarity
+      FROM knowledge_chunks c JOIN knowledge_documents d ON d.active_version_id = c.document_version_id AND d.deleted_at IS NULL AND d.storage_key = 'db:catalog'
+      WHERE c.source_type = 'product'
+      ORDER BY c.embedding <=> ${literal}::vector LIMIT ${HIT_LIMIT * 2}
+    `;
+    return rows.filter((row) => row.similarity >= env.RETRIEVAL_MIN_SIMILARITY).map((row) => row.source_id.replace(/^product:/, ''));
+  } catch (error) {
+    logger.warn({ stage: 'search_products.semantic_unavailable', error: error instanceof Error ? error.message : String(error) });
+    return [];
+  }
+}
+
+/**
+ * Product search for the agent: keyword and meaning-based results are merged (rank fusion). Price, sizes and stock always come
+ * from the products tables, never from the indexed chunk text, so a stale index cannot show a wrong price.
+ */
+export async function searchProductsForAgent(query: string, maxPriceVnd: number | null): Promise<AgentProductHit[]> {
+  const [keyword, semanticCodes] = await Promise.all([keywordProducts(query, maxPriceVnd), semanticProductCodes(query)]);
+  const known = new Map(keyword.map((card) => [card.code, card]));
+  const order = mergeRanked([keyword.map((card) => card.code), semanticCodes], HIT_LIMIT);
+  const missing = order.filter((code) => !known.has(code));
+  for (const card of await listStoreCardsByCodes(missing, maxPriceVnd)) known.set(card.code, card);
+  return order.flatMap((code) => known.get(code) ?? []).map(toHit);
 }
 
 // ───────────── Cart ─────────────

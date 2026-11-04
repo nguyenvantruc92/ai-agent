@@ -10,7 +10,7 @@ const tones = [
   'from-[#ede9fe] to-[#fae8ff]', 'from-[#e0e7ff] to-[#ede9fe]', 'from-[#fce7f3] to-[#fae8ff]',
   'from-[#dbeafe] to-[#e0e7ff]', 'from-[#ccfbf1] to-[#dbeafe]', 'from-[#fef3c7] to-[#fce7f3]',
 ];
-const toneFor = (key: string) => tones[[...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % tones.length];
+export const toneFor = (key: string) => tones[[...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % tones.length];
 const MAX_DOTS = 5;
 
 export function discountPercent(price: number, compareAt: number | null) {

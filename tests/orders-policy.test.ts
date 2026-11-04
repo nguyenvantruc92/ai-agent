@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseRoute } from '@/features/agent/router';
+import { precheckRoute } from '@/features/agent/router';
 import { checkRequest, idempotencyKey, returnReasonStated } from '@/features/orders/policy';
 import type { Order, Product } from '@/features/orders/types';
 import { fakeGateway, NOW, products } from './fakes';
@@ -82,32 +82,18 @@ describe('checkRequest with the same product on several order lines', () => {
   });
 });
 
-describe('chooseRoute', () => {
-  it('sends cart, ordering and cancelling to the agent, and keeps its short follow-ups there', () => {
-    expect(chooseRoute('Thêm áo polo trắng size M vào giỏ hàng', { orderId: null })).toBe('agent');
-    expect(chooseRoute('Tôi muốn mua áo sơ mi Oxford', { orderId: null })).toBe('agent');
-    expect(chooseRoute('Đặt hàng giúp mình', { orderId: null })).toBe('agent');
-    expect(chooseRoute('Huỷ đơn giúp mình', { orderId: null })).toBe('agent');
-    expect(chooseRoute('size M, màu trắng', { orderId: null, shopping: true })).toBe('agent');
-    expect(chooseRoute('size M, màu trắng', { orderId: null, shopping: false })).toBe('rag');
-    expect(chooseRoute('Áo polo trắng giá bao nhiêu?', { orderId: null })).toBe('rag');
+describe('precheckRoute', () => {
+  it('sends everything except injection and plain greetings to the agent, which picks the tool from its description', () => {
+    for (const message of [
+      'Thêm áo polo trắng size M vào giỏ hàng', 'Tôi muốn mua áo sơ mi Oxford', 'Đặt hàng giúp mình', 'Huỷ đơn giúp mình', 'size M, màu trắng',
+      'Áo polo trắng giá bao nhiêu?', 'Tôi có thể đổi size sau 10 ngày không?', 'Đơn FT-2026-1001 của tôi giao chưa?', 'Tôi muốn đổi áo sang size L',
+      'Còn size L không?', 'Shop có những phương thức thanh toán nào?',
+    ]) expect(precheckRoute(message), message).toBe('agent');
   });
 
-  it('sends order and exchange intents to the agent', () => {
-    expect(chooseRoute('Đơn FT-2026-1001 của tôi giao chưa?', { orderId: null })).toBe('agent');
-    expect(chooseRoute('Tôi muốn đổi áo sang size L', { orderId: null })).toBe('agent');
-    expect(chooseRoute('Kiểm tra đơn hàng giúp mình', { orderId: null })).toBe('agent');
-  });
-
-  it('keeps catalog and policy questions on the RAG path', () => {
-    expect(chooseRoute('Tôi có thể đổi size sau 10 ngày không?', { orderId: null })).toBe('rag');
-    expect(chooseRoute('Áo polo trắng giá bao nhiêu?', { orderId: null })).toBe('rag');
-    expect(chooseRoute('Chào bạn', { orderId: 'FT-2026-1001' })).toBe('rag');
-  });
-
-  it('keeps short follow-ups on the agent once an order is in context', () => {
-    expect(chooseRoute('Còn size L không?', { orderId: 'FT-2026-1001' })).toBe('agent');
-    expect(chooseRoute('Shop có những phương thức thanh toán nào?', { orderId: 'FT-2026-1001' })).toBe('rag');
+  it('answers plain greetings without a model call', () => {
+    for (const message of ['Chào bạn', 'xin chào', 'Hello', 'hi!']) expect(precheckRoute(message), message).toBe('small_talk');
+    expect(precheckRoute('Chào shop, cho mình hỏi giá áo polo')).toBe('agent');
   });
 });
 

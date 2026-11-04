@@ -7,7 +7,7 @@ Trợ lý tiếng Việt cho cửa hàng thời trang nam:
 
 ## Chạy local
 
-1. Sao chép `.env.example` thành `.env`, điền `OPENAI_API_KEY`, `ADMIN_SESSION_SECRET`, và tạo hash admin:
+1. Sao chép `.env.example` thành `.env`, điền `ADMIN_SESSION_SECRET` và tạo hash admin (khóa OpenAI có thể nhập sau trong Admin → Cài đặt, hoặc điền `OPENAI_API_KEY` làm giá trị dự phòng):
 
    ```bash
    pnpm install
@@ -46,6 +46,27 @@ Agent cũng bán hàng qua MCP: `search_products`, `view_cart`, `add_to_cart`, `
 5. Đơn `FT-2026-1013` có cùng sản phẩm `SM-001` ở hai dòng (size M và L): agent phải hỏi khách xử lý dòng nào trước khi đề xuất đổi/trả.
 
 Các đơn demo: 1001/1002/1009/1010/1012 đổi/trả hợp lệ; 1013 hai dòng cùng sản phẩm; 1003 quá 7 ngày; 1004 đang giao; 1005 đang xử lý; 1006 tất và phụ kiện đã mở; 1007 giảm giá 40%; 1008 đã có yêu cầu đổi; 1011 đã hủy. Sơ đồ graph, state, vị trí `interrupt()` và quyền từng tool: [docs/agent-graph.md](docs/agent-graph.md).
+
+## Dựng môi trường mới (dữ liệu demo, ảnh, cấu hình AI)
+
+Mọi thứ cần để chạy demo nằm trong repo; **không có khóa bí mật nào** (OpenAI, mật khẩu admin, `ADMIN_SESSION_SECRET`...). Sau khi `git clone`, làm theo "Chạy local" ở trên rồi `docker compose exec web pnpm db:seed`. Lệnh này (chạy lại nhiều lần vẫn an toàn) nạp:
+
+| Dữ liệu | Nguồn trong repo |
+|---|---|
+| 38 sản phẩm, 11 danh mục (nạp khi migrate/seed nếu bảng trống) | `data/raw/bang_gia_san_pham_thoi_trang_nam.xlsx` |
+| 13 đơn hàng demo `FT-2026-1001`–`1013` | `src/features/orders/seed-data.ts` (nạp khi migrate) |
+| Ảnh chính của từng sản phẩm (chỉ cho sản phẩm chưa có ảnh) | `data/seed/product-images/<MÃ>.webp` |
+| FAQ chính sách, hướng dẫn tra đơn/hủy đơn/đổi trả | `data/raw/faq_*.pdf` (index bằng worker, cần OpenAI key) |
+| Agent mặc định, scope "Chính sách", MCP server nội bộ | `src/features/ai/seed.ts`, `prompts/` |
+
+Chưa có OpenAI key thì web, admin và catalog vẫn chạy; việc index (embedding) và chat chờ đến khi nhập key ở **Admin → Cài đặt** (khóa lưu mã hóa trong DB, không nằm trong git). Ảnh được sinh bằng `python3 scripts/generate-product-images.py data/seed/product-images` (cần ImageMagick); chỉ chạy lại khi muốn đổi ảnh. Khóa, cuộc trò chuyện, đơn của khách và file upload trong DB dev **không** được export.
+
+## AI Agent đa cấu hình (Admin → AI)
+
+- **AI Agents**: nhiều agent, một agent mặc định trả lời khách trên website; mỗi agent có hướng dẫn (instructions), model (trong `OPENAI_ALLOWED_MODELS`), giới hạn bước, Knowledge scope và MCP Server. Có nút "Chat thử" cho admin.
+- **Knowledge**: tài liệu gom thành scope (tên, tên tool, mô tả tool); mỗi scope là một tool cho agent.
+- **MCP Server**: server nội bộ (đủ tool cửa hàng) và server ngoài qua HTTP (Bearer/header, chống SSRF; host riêng tư phải khai trong `MCP_ALLOWED_HOSTS`). Lấy danh sách tool từ URL, tick tool cần dùng và tool nào cần nhân viên duyệt; agent chỉ chọn server.
+- Kế hoạch, quyết định và báo cáo kiểm thử: [plans/ai-agent-refactor-plan.md](plans/ai-agent-refactor-plan.md), [docs/ai-agent-test-report.md](docs/ai-agent-test-report.md), [docs/agent-graph.md](docs/agent-graph.md).
 
 ## Kiểm tra
 

@@ -9,7 +9,7 @@ import { SyncPill } from '@/components/admin/sync-pill';
 import { Avatar, AvatarFallback } from '@/components/admin-ui/avatar';
 import { Button } from '@/components/admin-ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/admin-ui/dropdown';
-import { GearIcon, ChatIcon, ChevronDownIcon, DatabaseIcon, LayoutGridIcon, LogOutIcon, MenuTwoIcon, MoonIcon, MovingBoxIcon, SunIcon, TagIcon, TaskIcon, XIcon, BoxIcon, CartIcon } from '@/components/admin-ui/icons';
+import { GearIcon, ChatIcon, ChevronDownIcon, DatabaseIcon, LayoutGridIcon, LogOutIcon, MenuTwoIcon, MoonIcon, MovingBoxIcon, PlugIcon, SparkleIcon, SunIcon, TagIcon, TaskIcon, XIcon, BoxIcon, CartIcon } from '@/components/admin-ui/icons';
 import type { SyncState } from '@/features/catalog/dashboard';
 import { cn } from '@/lib/cn';
 
@@ -69,11 +69,13 @@ function Shell({ pendingApprovals, processingOrders, sync, children }: { pending
       { href: '/admin/categories', label: 'Danh mục', icon: <TagIcon /> },
       { href: '/admin/orders', label: 'Đơn hàng', icon: <CartIcon />, badge: processingOrders },
     ] },
-    { title: 'Hệ thống', items: [{ href: '/admin/settings', label: 'Cài đặt', icon: <GearIcon /> }] },
-    { title: 'Trợ lý AI', items: [
-      { href: '/admin/approvals', label: 'Duyệt đổi/trả', icon: <TaskIcon />, badge: pendingApprovals },
+    { title: 'AI', items: [
+      { href: '/admin/agents', label: 'AI Agents', icon: <SparkleIcon /> },
       { href: '/admin/knowledge', label: 'Knowledge', icon: <DatabaseIcon /> },
+      { href: '/admin/mcp-servers', label: 'MCP Server', icon: <PlugIcon /> },
+      { href: '/admin/approvals', label: 'Phê duyệt', icon: <TaskIcon />, badge: pendingApprovals },
     ] },
+    { title: 'Hệ thống', items: [{ href: '/admin/settings', label: 'Cài đặt', icon: <GearIcon /> }] },
   ];
   const isActive = (href: string) => (href === '/admin' ? pathname === '/admin' : pathname === href || pathname.startsWith(`${href}/`));
 

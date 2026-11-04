@@ -35,7 +35,7 @@ export function OrderAdminActions({ code, status, paymentMethod, paymentStatus }
     router.refresh();
   }
 
-  if (final) return <p className="text-sm text-gray-500 dark:text-gray-400">{status === 'delivered' ? 'Đơn đã giao. Đổi/trả được xử lý qua trợ lý AI và trang Duyệt đổi/trả.' : 'Đơn đã hủy.'}</p>;
+  if (final) return <p className="text-sm text-gray-500 dark:text-gray-400">{status === 'delivered' ? 'Đơn đã giao. Đổi/trả được xử lý qua trợ lý AI và trang Phê duyệt.' : 'Đơn đã hủy.'}</p>;
 
   const blocked = actions.filter((item) => !item.check.ok && item.action !== 'cancel');
   return (
