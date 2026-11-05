@@ -2,7 +2,8 @@ import { serverForCall, withMcpClient } from '@/features/mcp/servers';
 import { validateToolArgs } from '@/features/mcp/validate';
 import { env } from '@/lib/env';
 import { HttpError } from '@/lib/http';
-import { logger } from '@/lib/logger';
+import { breakerFor, CircuitOpenError } from '@/lib/resilience';
+import { outcomeOf, recordDependencyCall } from '@/lib/telemetry';
 
 /** What a tool of an external MCP server returned, reduced to text the model can read. */
 export type ExternalResult = { text: string; isError: boolean; truncated: boolean };
@@ -33,12 +34,14 @@ export async function callExternalTool(serverId: string, toolName: string, args:
   const server = await serverForCall(serverId);
   const startedAt = Date.now();
   try {
-    const result = await withMcpClient(server, (client) => client.callTool({ name: toolName, arguments: args }, undefined, { timeout: env.MCP_TOOL_TIMEOUT_MS }));
+    // One breaker per external server; external tools are never retried (they may write).
+    const result = await breakerFor(`mcp:${server.slug}`).run(() => withMcpClient(server, (client) => client.callTool({ name: toolName, arguments: args }, undefined, { timeout: env.MCP_TOOL_TIMEOUT_MS })));
     const text = toText(result as { content?: Content[]; structuredContent?: unknown });
-    logger.info({ trace_id: traceId, stage: 'mcp.external_tool', server: server.slug, tool: toolName, isError: Boolean(result.isError), chars: text.length, latencyMs: Date.now() - startedAt });
+    recordDependencyCall({ traceId, dependency: 'mcp_external', operation: `${server.slug}.${toolName}`, outcome: result.isError ? 'tool_error' : 'ok', latencyMs: Date.now() - startedAt });
     return { text: text.slice(0, MAX_TEXT_CHARS), isError: Boolean(result.isError), truncated: text.length > MAX_TEXT_CHARS };
   } catch (error) {
-    logger.warn({ trace_id: traceId, stage: 'mcp.external_tool_failed', server: server.slug, tool: toolName, error: error instanceof Error ? error.message : String(error), latencyMs: Date.now() - startedAt });
+    if (error instanceof CircuitOpenError) throw new HttpError(`MCP server ${server.name} tạm thời không khả dụng (nhiều lỗi liên tiếp). Thử lại sau ít phút.`, 503);
+    recordDependencyCall({ traceId, dependency: 'mcp_external', operation: `${server.slug}.${toolName}`, outcome: outcomeOf(error), latencyMs: Date.now() - startedAt, error });
     throw error instanceof HttpError ? error : new HttpError('Không gọi được tool của MCP server ngoài (lỗi kết nối hoặc server từ chối).', 502);
   }
 }

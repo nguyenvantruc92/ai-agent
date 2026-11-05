@@ -31,9 +31,9 @@ export async function seedAiDefaults() {
 
     const agentId = randomUUID();
     await tx`
-      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_steps, max_tool_calls, is_active, is_default)
+      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_tokens, max_steps, max_tool_calls, is_active, is_default)
       VALUES (${agentId}, 'Trợ lý Fashion Tomodev', ${DEFAULT_AGENT_SLUG}, 'Agent mặc định của cửa hàng: tư vấn, tra đơn, giỏ hàng, đặt hàng, đổi/trả.',
-        ${defaultAgentInstructions}, ${env.OPENAI_CHAT_MODEL}, ${env.OPENAI_TEMPERATURE}, ${env.AGENT_MAX_STEPS}, ${env.AGENT_MAX_TOOL_CALLS}, true, true)
+        ${defaultAgentInstructions}, ${env.OPENAI_CHAT_MODEL}, ${env.OPENAI_TEMPERATURE}, ${env.OPENAI_MAX_OUTPUT_TOKENS}, ${env.AGENT_MAX_STEPS}, ${env.AGENT_MAX_TOOL_CALLS}, true, true)
     `;
     await tx`INSERT INTO agent_mcp_servers (agent_id, mcp_server_id) VALUES (${agentId}, ${builtin.id})`;
 

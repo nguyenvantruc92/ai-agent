@@ -9,7 +9,7 @@ import type { AgentRuntimeConfig } from '@/features/ai/agents';
 import { composeSystemPrompt } from '@/features/ai/prompt';
 import { cancelDetails, cartFingerprint, checkoutDetails, orderFingerprint, type CheckoutPayload } from '@/features/agent/shop-types';
 import { cancelOrderArgs, cartLineArgs, checkoutArgs, confirmTools, finalAnswerArgs, lookupOrderArgs, parseExchangeArgs, parseReturnArgs, readTools, scopeQueryArgs, searchProductsArgs, cartTools, writeTools } from '@/features/agent/tools';
-import type { FinalAnswer, SourceRef } from '@/features/chat/rag-answer';
+import type { FinalAnswer, PreviousSource, SourceRef } from '@/features/chat/answer';
 import { mentionedProductSources } from '@/features/agent/mentions';
 import { enforceGroundedNumbers } from '@/features/chat/grounding';
 import { injectionRefusal } from '@/features/chat/guardrails';
@@ -18,11 +18,15 @@ import { validateToolArgs } from '@/features/mcp/validate';
 import type { ExternalToolSpec } from '@/features/agent/tools';
 import { validateAnswer } from '@/features/chat/validation';
 import { checkRequest, returnReasonStated } from '@/features/orders/policy';
-import { checkoutInput, normalizePhone } from '@/features/orders/customer-schemas';
+import { checkoutInput, isOnline, normalizePhone } from '@/features/orders/customer-schemas';
+import { ONLINE_PAYMENT_UNAVAILABLE, onlinePaymentEnabled } from '@/features/orders/payment-availability';
 import type { RequestAction, RequestProposal } from '@/features/orders/types';
-import type { PreviousSource } from '@/features/rag/query';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { metrics, safely } from '@/lib/metrics';
+import { redactText, safeError } from '@/lib/redact';
+import { breakerFor, CircuitOpenError } from '@/lib/resilience';
+import { trackDependency } from '@/lib/telemetry';
 
 export type ApprovalInterrupt = {
   approvalId: string;
@@ -69,12 +73,15 @@ export const AgentState = Annotation.Root({
   lastRequest: last<LastRequest | null>(),
   modelCalls: Annotation<number>({ reducer: (_c, next) => next, default: () => 0 }),
   toolCalls: Annotation<number>({ reducer: (_c, next) => next, default: () => 0 }),
+  /** Deterministic, redacted communication context. It is never evidence for live business data. */
+  conversationSummary: last<string | null>(),
+  summaryMessageCount: Annotation<number>({ reducer: (_c, next) => next, default: () => 0 }),
   finalAnswer: last<FinalAnswer | null>(),
 });
 export type AgentStateValue = typeof AgentState.State;
 
 /** `forceFinal` restricts the model to final_answer on its last allowed step. `agent` carries the per-agent model settings and tool schemas. */
-export type AgentModel = { invoke(messages: BaseMessage[], options: { signal?: AbortSignal; user: string; forceFinal: boolean; agent: Pick<AgentRuntimeConfig, 'model' | 'temperature' | 'tools' | 'externalTools'> }): Promise<AIMessage> };
+export type AgentModel = { invoke(messages: BaseMessage[], options: { signal?: AbortSignal; user: string; forceFinal: boolean; agent: Pick<AgentRuntimeConfig, 'model' | 'temperature' | 'maxTokens' | 'tools' | 'externalTools'> }): Promise<AIMessage> };
 
 export type AgentDeps = {
   model: AgentModel;
@@ -97,11 +104,59 @@ const textOf = (message: BaseMessage) => typeof message.content === 'string'
 const mergeSources = (current: SourceRef[], added: SourceRef[]) => [...current, ...added.filter((source) => !current.some((item) => item.id === source.id))];
 const toolMessage = (id: string, name: string, payload: unknown) => new ToolMessage({ tool_call_id: id, name, content: JSON.stringify(payload) });
 
-/** Keeps whole recent turns so every tool call stays paired with its result. */
-function agentHistory(messages: BaseMessage[]) {
+/** Keeps whole recent turns so every tool call stays paired with its result. `keepRecent` comes from the agent. */
+function historyStart(messages: BaseMessage[], keepRecent: number) {
   const humanIndexes = messages.flatMap((message, index) => HumanMessage.isInstance(message) ? [index] : []);
-  const start = humanIndexes.at(-Math.max(1, env.MAX_HISTORY_TURNS)) ?? 0;
-  return messages.slice(start);
+  const turnStart = humanIndexes.at(-Math.max(1, env.MAX_HISTORY_TURNS)) ?? 0;
+  const messageWindowStart = Math.max(0, messages.length - keepRecent);
+  // Start at a HumanMessage, so all AI tool calls in the selected window retain their ToolMessage pair.
+  const boundedStart = humanIndexes.find((index) => index >= messageWindowStart) ?? turnStart;
+  return Math.max(turnStart, boundedStart);
+}
+
+/**
+ * A turn interrupted between the model's tool call and its result (client disconnect, crash, deploy) leaves an
+ * AIMessage whose tool_calls have no ToolMessage in the checkpoint, and the provider rejects such a history. Each
+ * missing result is closed with an explicit "did not run" ToolMessage right after the call's own results. Only the
+ * request to the model is changed, never the stored state.
+ */
+export function closeDanglingToolCalls(messages: BaseMessage[]): BaseMessage[] {
+  const answered = new Set(messages.filter((message) => ToolMessage.isInstance(message)).map((message) => (message as ToolMessage).tool_call_id));
+  const output: BaseMessage[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    output.push(message);
+    const calls = AIMessage.isInstance(message) ? message.tool_calls ?? [] : [];
+    if (!calls.length) continue;
+    while (index + 1 < messages.length && ToolMessage.isInstance(messages[index + 1])) output.push(messages[++index]);
+    for (const call of calls) {
+      if (call.id && !answered.has(call.id)) output.push(toolMessage(call.id, call.name, { status: 'error', message: 'Lượt trước bị gián đoạn nên tool này chưa chạy; nếu cần, hãy gọi lại trong lượt hiện tại.' }));
+    }
+  }
+  return output;
+}
+
+/** Whole recent turns only: a ToolMessage is never sent without the AI tool-call it answers, nor a call without a result. */
+function agentHistory(messages: BaseMessage[], keepRecent: number) {
+  return closeDanglingToolCalls(messages.slice(historyStart(messages, keepRecent)));
+}
+
+const redactSummaryText = (text: string) => redactText(text).replace(/\s+/g, ' ').trim();
+
+/**
+ * Compacts only user intent and assistant-facing communication. Tool output is deliberately
+ * excluded: prices, stock, policies and order state must be fetched again in the current turn.
+ */
+export function createConversationSummary(messages: BaseMessage[], through: number) {
+  const lines = messages.slice(0, through).flatMap((message) => {
+    if (!HumanMessage.isInstance(message) && !AIMessage.isInstance(message)) return [];
+    const text = redactSummaryText(textOf(message));
+    if (!text) return [];
+    return [`${HumanMessage.isInstance(message) ? 'Khách' : 'Trợ lý'}: ${text.slice(0, 280)}`];
+  });
+  if (!lines.length) return null;
+  // Keep the latest communication decisions within a bounded prompt budget.
+  return lines.slice(-8).join('\n').slice(-1_600);
 }
 
 function limitAnswer(reason: string): FinalAnswer {
@@ -111,6 +166,17 @@ function limitAnswer(reason: string): FinalAnswer {
     insufficientInformation: true,
     sources: [],
     diagnostics: { route: 'limit', validation: reason, promptSourceIds: [], modelCitations: null, inputTokens: 0, outputTokens: 0 },
+  };
+}
+
+/** The model provider is failing (breaker open): answer at once instead of making the customer wait for timeouts. */
+export function unavailableAnswer(): FinalAnswer {
+  return {
+    answer: 'Trợ lý đang tạm gián đoạn do dịch vụ AI không phản hồi. Bạn vui lòng thử lại sau ít phút, hoặc liên hệ nhân viên Fashion Tomodev nếu cần gấp. Giỏ hàng và đơn hàng của bạn không bị ảnh hưởng.',
+    citedSourceIds: [],
+    insufficientInformation: true,
+    sources: [],
+    diagnostics: { route: 'unavailable', validation: 'circuit_open', promptSourceIds: [], modelCitations: null, inputTokens: 0, outputTokens: 0 },
   };
 }
 
@@ -138,7 +204,7 @@ export function buildAgentGraph(deps: AgentDeps) {
         if (error instanceof Error && error.name === 'GraphInterrupt') {
           logger.info({ trace_id: traceOf(config), stage: 'graph.interrupt', node: name, latencyMs: Date.now() - startedAt });
         } else {
-          logger.error({ trace_id: traceOf(config), stage: 'graph.node_failed', node: name, latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+          logger.error({ trace_id: traceOf(config), stage: 'graph.node_failed', node: name, latencyMs: Date.now() - startedAt, error: safeError(error) });
         }
         throw error;
       }
@@ -151,6 +217,7 @@ export function buildAgentGraph(deps: AgentDeps) {
 
   const guard = node('guard', async (state, config) => {
     logger.warn({ trace_id: traceOf(config), stage: 'guardrail.prompt_injection' });
+    safely(() => metrics.guard.inc());
     const answer: FinalAnswer = { ...injectionRefusal, sources: [], diagnostics: { route: 'guard', validation: 'prompt_injection', promptSourceIds: [], modelCitations: null, inputTokens: 0, outputTokens: 0 } };
     return { finalAnswer: answer, messages: [new AIMessage(answer.answer)] };
   });
@@ -161,6 +228,15 @@ export function buildAgentGraph(deps: AgentDeps) {
     return { finalAnswer: answer, messages: [new AIMessage(answer.answer)] };
   });
 
+  const summarize = node('summarize', async (state, config) => {
+    const { history } = await deps.loadAgent(threadOf(config));
+    if (!history.summaryEnabled || state.messages.length < history.summarizeAfterMessages) return {};
+    const through = historyStart(state.messages, history.keepRecentMessages);
+    if (!through || through <= state.summaryMessageCount) return {};
+    const summary = createConversationSummary(state.messages, through);
+    return summary ? { conversationSummary: summary, summaryMessageCount: through } : {};
+  });
+
   const agent = node('agent', async (state, config) => {
     const runtime = await deps.loadAgent(threadOf(config));
     if (state.modelCalls >= runtime.maxSteps) return { finalAnswer: limitAnswer('max_steps'), messages: [new AIMessage(limitAnswer('max_steps').answer)] };
@@ -169,13 +245,24 @@ export function buildAgentGraph(deps: AgentDeps) {
     const profileText = profile?.preferredSize || profile?.lastRequest
       ? JSON.stringify({ size_thuong_chon: profile.preferredSize ?? null, yeu_cau_gan_nhat: profile.lastRequest ?? null })
       : 'Chưa có.';
+    const summaryBlock = runtime.history.summaryEnabled && state.conversationSummary
+      ? `\n\n[TÓM TẮT HỘI THOẠI CŨ — chỉ là ngữ cảnh giao tiếp, không phải dữ liệu sống. Không dùng nó làm giá, tồn kho, trạng thái đơn hay chính sách; hãy gọi tool trong lượt hiện tại.]\n${state.conversationSummary}\n[HẾT TÓM TẮT]`
+      : '';
     const system = composeSystemPrompt(runtime.instructions)
       .replace('{{today}}', deps.now().toISOString().slice(0, 10))
       .replace('{{customer_profile}}', profileText)
-      .replace('{{allowed_source_ids}}', state.turnSources.length ? state.turnSources.map((source) => source.id).join(', ') : 'Chưa có (chưa gọi tool nào trong lượt này).');
+      .replace('{{allowed_source_ids}}', state.turnSources.length ? state.turnSources.map((source) => source.id).join(', ') : 'Chưa có (chưa gọi tool nào trong lượt này).') + summaryBlock;
     // The last allowed step must answer with what was gathered instead of hitting the limit.
     const forceFinal = state.modelCalls >= runtime.maxSteps - 1 || state.toolCalls >= runtime.maxToolCalls;
-    const response = await deps.model.invoke([new SystemMessage(system), ...agentHistory(state.messages)], { signal: config.signal, user: state.userId, forceFinal, agent: runtime });
+    let response: AIMessage;
+    try {
+      response = await breakerFor('openai:chat').run(() => trackDependency('openai', runtime.model, traceOf(config), () => deps.model.invoke([new SystemMessage(system), ...agentHistory(state.messages, runtime.history.keepRecentMessages)], { signal: config.signal, user: state.userId, forceFinal, agent: runtime }), config.signal), config.signal);
+    } catch (error) {
+      if (!(error instanceof CircuitOpenError)) throw error;
+      // Ends the turn like the step limit does: no model call, a plain answer, any earlier tool results stay paired.
+      const answer = unavailableAnswer();
+      return { finalAnswer: answer, messages: [new AIMessage(answer.answer)] };
+    }
     return { messages: [response], modelCalls: state.modelCalls + 1 };
   });
 
@@ -416,6 +503,8 @@ export function buildAgentGraph(deps: AgentDeps) {
       if (!parsed.success) return deny('invalid_arguments', 'Thiếu thông tin giao hàng: cần họ tên, số điện thoại, địa chỉ và hình thức thanh toán do khách cung cấp.');
       const form = checkoutInput.omit({ idempotencyKey: true }).safeParse({ name: parsed.data.name, phone: parsed.data.phone, address: parsed.data.address, note: parsed.data.note ?? '', paymentMethod: parsed.data.payment_method });
       if (!form.success) return deny('invalid_arguments', form.error.issues[0]?.message ?? 'Thông tin giao hàng chưa hợp lệ.');
+      // Checked before the customer is asked to confirm, so they never confirm an order that checkout would refuse.
+      if (isOnline(form.data.paymentMethod) && !onlinePaymentEnabled()) return deny('payment_unavailable', `${ONLINE_PAYMENT_UNAVAILABLE} Hãy hỏi khách có đồng ý thanh toán COD không.`);
       if (!phoneStated(form.data.phone, customerText(state))) return deny('phone_not_stated', 'Số điện thoại nhận hàng phải do khách cung cấp trong cuộc trò chuyện. Hãy hỏi khách.');
       const cart = await deps.gateway.viewCart(threadId, traceId);
       const sources = mergeSources(state.turnSources, [cartSource]);
@@ -620,6 +709,7 @@ export function buildAgentGraph(deps: AgentDeps) {
     .addNode('precheck', precheck)
     .addNode('guard', guard)
     .addNode('small_talk', smallTalk)
+    .addNode('summarize', summarize)
     .addNode('agent', agent)
     .addNode('tools', tools)
     .addNode('approve', approve)
@@ -633,9 +723,10 @@ export function buildAgentGraph(deps: AgentDeps) {
     .addNode('limit', limit)
     .addNode('remember', remember)
     .addEdge(START, 'precheck')
-    .addConditionalEdges('precheck', (state) => state.route ?? 'agent', ['guard', 'small_talk', 'agent'])
+    .addConditionalEdges('precheck', (state) => state.route === 'guard' ? 'guard' : state.route === 'small_talk' ? 'small_talk' : 'summarize', ['guard', 'small_talk', 'summarize'])
     .addEdge('guard', END)
     .addEdge('small_talk', END)
+    .addEdge('summarize', 'agent')
     .addConditionalEdges('agent', async (state, config) => {
       if (state.finalAnswer) return END;
       const calls = lastAi(state.messages).tool_calls ?? [];

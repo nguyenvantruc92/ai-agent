@@ -7,8 +7,11 @@ import { listStoreCardsByCodes, listStoreProducts, type StoreCard } from '@/feat
 import { embedQuery } from '@/features/rag/retrieval';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 import { checkout } from '@/features/orders/checkout';
 import { cancelCustomerOrder, getCustomerOrder } from '@/features/orders/customer-orders';
+import { isOnline } from '@/features/orders/customer-schemas';
+import { ONLINE_PAYMENT_UNAVAILABLE } from '@/features/orders/payment-availability';
 import { normalizePhone } from '@/features/orders/customer-schemas';
 import { findOrder } from '@/features/orders/repository';
 import { addToCart, getCart, MAX_PER_LINE, removeLine, setLineQuantity } from '@/features/shop/cart';
@@ -58,7 +61,7 @@ async function semanticProductCodes(query: string): Promise<string[]> {
     `;
     return rows.filter((row) => row.similarity >= env.RETRIEVAL_MIN_SIMILARITY).map((row) => row.source_id.replace(/^product:/, ''));
   } catch (error) {
-    logger.warn({ stage: 'search_products.semantic_unavailable', error: error instanceof Error ? error.message : String(error) });
+    logger.warn({ stage: 'search_products.semantic_unavailable', error: safeError(error) });
     return [];
   }
 }
@@ -147,14 +150,14 @@ export async function verifyOrderForThread(threadId: string, orderId: string, ph
   const visitorId = await visitorOfThread(threadId);
   const keys = [[`agent-verify:thread:${threadId}`, FAILS_PER_THREAD], [`lookup:code:${code}`, FAILS_PER_CODE]] as const;
   for (const [key, limit] of keys) {
-    if (!peekRateLimit(key, limit).allowed) return { verified: false as const, message: 'Xác minh sai quá nhiều lần. Vui lòng thử lại sau ít phút hoặc liên hệ cửa hàng.' };
+    if (!(await peekRateLimit(key, limit)).allowed) return { verified: false as const, message: 'Xác minh sai quá nhiều lần. Vui lòng thử lại sau ít phút hoặc liên hệ cửa hàng.' };
   }
   const [row] = await sql<{ visitor_id: string | null; phone: string | null }[]>`SELECT visitor_id, phone FROM orders WHERE id = ${code}`;
   const given = phone ? normalizePhone(phone) : null;
   const owner = Boolean(row?.visitor_id && row.visitor_id === visitorId);
   const phoneMatches = Boolean(row?.phone && given && given === row.phone);
   if (!row || !(owner || phoneMatches)) {
-    if (given) for (const [key, limit] of keys) takeRateLimit(key, limit, FAIL_WINDOW_SECONDS);
+    if (given) for (const [key, limit] of keys) await takeRateLimit(key, limit, FAIL_WINDOW_SECONDS);
     return { verified: false as const, message: given || phone ? 'Không tìm thấy đơn hàng khớp mã đơn và số điện thoại này.' : 'Cần số điện thoại đặt hàng để xác minh đơn này. Hãy hỏi khách số điện thoại.' };
   }
   const order = await findOrder(code);
@@ -190,7 +193,9 @@ export async function checkoutConfirmed(threadId: string, confirmationId: string
     const result = {
       status: 'created', source_id: `order:${order.code}`, order_code: order.code, total_vnd: order.totalVnd, payment_method: order.paymentMethod, payment_status: order.paymentStatus,
       order_page: `/orders/${order.code}`,
-      next_step: order.canPay ? `Đơn chưa thanh toán: khách mở ${`/orders/${order.code}`} để thanh toán online.` : 'Đơn COD: thanh toán khi nhận hàng.',
+      next_step: order.canPay ? `Đơn chưa thanh toán: khách mở ${`/orders/${order.code}`} để thanh toán online.`
+        : isOnline(order.paymentMethod) && order.paymentStatus !== 'paid' ? `${ONLINE_PAYMENT_UNAVAILABLE} Đơn chờ cửa hàng liên hệ.`
+        : 'Đơn COD: thanh toán khi nhận hàng.',
     };
     await finishConfirmation(row.id, 'executed', result);
     return result;

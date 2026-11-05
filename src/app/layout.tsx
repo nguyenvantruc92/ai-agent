@@ -4,6 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: { default: 'Tomodev Fashion', template: '%s · Tomodev' },
   description: 'Thời trang nam tối giản, có trợ lý AI tư vấn size và chính sách cửa hàng.',
+  icons: { icon: '/icon.png' },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

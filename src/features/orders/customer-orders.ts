@@ -4,8 +4,9 @@ import { sql } from '@/db/client';
 import { syncCatalog } from '@/features/catalog/sync';
 import { isOnline, normalizePhone } from '@/features/orders/customer-schemas';
 import { recordOrderEvent, restockOrder } from '@/features/orders/order-ops';
+import { onlinePaymentEnabled } from '@/features/orders/payment-availability';
 import { audit } from '@/features/orders/repository';
-import { HttpError } from '@/lib/http';
+import { HttpError, rateLimitError } from '@/lib/http';
 import { peekRateLimit, resetRateLimit, takeRateLimit } from '@/lib/rate-limit';
 
 /** Who is asking: the browser that placed the order, or someone who knows the order code AND its phone. */
@@ -46,7 +47,7 @@ async function present(row: OrderRow): Promise<CustomerOrder> {
     customerName: row.customer_name ?? '', phoneMasked: mask(row.phone), address: row.address ?? '', note: row.note,
     items: items.map((item) => ({ productCode: item.product_id, slug: item.slug, name: item.product_name, size: item.size, color: item.color, quantity: item.quantity, unitPriceVnd: item.unit_price_vnd, lineTotalVnd: item.unit_price_vnd * item.quantity })),
     subtotalVnd: row.subtotal_vnd, shippingFeeVnd: row.shipping_fee_vnd, totalVnd: row.total_vnd,
-    canCancel: open, canPay: open && isOnline(row.payment_method),
+    canCancel: open, canPay: open && isOnline(row.payment_method) && onlinePaymentEnabled(),
   };
 }
 
@@ -68,15 +69,15 @@ const FAIL_WINDOW_SECONDS = 15 * 60;
 export async function lookupCustomerOrder(code: string, phone: string, ip: string): Promise<CustomerOrder> {
   const keys = [[`lookup:code:${code}`, FAILS_PER_CODE], [`lookup:phone:${phone}`, FAILS_PER_PHONE], [`lookup:ip:${ip}`, FAILS_PER_IP]] as const;
   for (const [key, limit] of keys) {
-    const blocked = peekRateLimit(key, limit);
-    if (!blocked.allowed) throw new HttpError(`Tra cứu sai quá nhiều lần. Vui lòng thử lại sau ${Math.ceil(blocked.retryAfterSeconds / 60)} phút.`, 429);
+    const blocked = await peekRateLimit(key, limit);
+    if (!blocked.allowed) throw rateLimitError('Tra cứu sai quá nhiều lần.', blocked.retryAfterSeconds);
   }
   try {
     const order = await getCustomerOrder(code, { phone });
-    resetRateLimit(keys[0][0]);
+    await resetRateLimit(keys[0][0]);
     return order;
   } catch (error) {
-    if (error instanceof HttpError && error.status === 404) for (const [key, limit] of keys) takeRateLimit(key, limit, FAIL_WINDOW_SECONDS);
+    if (error instanceof HttpError && error.status === 404) for (const [key, limit] of keys) await takeRateLimit(key, limit, FAIL_WINDOW_SECONDS);
     throw error;
   }
 }
@@ -107,6 +108,12 @@ export async function cancelCustomerOrder(code: string, auth: OrderAuth) {
 
 /** Outcome of the simulated payment page. Idempotent: paying an already paid order changes nothing. */
 export async function payCustomerOrder(code: string, auth: OrderAuth, outcome: 'success' | 'failure') {
+  // The simulation lets the caller choose the outcome, so with it off the endpoint does not exist (no ownership check
+  // first, nothing to learn about the order). The attempt is audited without the phone or visitor.
+  if (!onlinePaymentEnabled()) {
+    await audit('customer', 'payment.simulation_blocked', 'order', code.slice(0, 40), {});
+    throw new HttpError('Không tìm thấy trang yêu cầu.', 404);
+  }
   const id = await sql.begin(async (tx) => {
     const row = await lockedOrder(tx, code, auth);
     if (!isOnline(row.payment_method)) throw new HttpError('Đơn COD thanh toán khi nhận hàng.', 409);

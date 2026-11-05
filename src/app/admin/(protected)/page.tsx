@@ -13,11 +13,51 @@ import { formatVnd } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Dashboard · Admin' };
 
-const actions: Record<string, string> = {
-  'product.create': 'tạo sản phẩm', 'product.update': 'cập nhật sản phẩm', 'product.delete': 'xóa sản phẩm',
-  'product.image_add': 'thêm ảnh cho sản phẩm', 'product.image_delete': 'xóa ảnh của sản phẩm',
-  'category.create': 'tạo danh mục', 'category.update': 'cập nhật danh mục', 'category.delete': 'xóa danh mục',
+type ActivityStyle = { text: string; tone: string; appendLabel?: boolean };
+
+const activityStyles: Record<string, ActivityStyle> = {
+  'approval.requested': { text: 'Trợ lý AI đã gửi yêu cầu phê duyệt', tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
+  'approval.approved': { text: 'Quản trị viên đã duyệt yêu cầu', tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'approval.rejected': { text: 'Quản trị viên đã từ chối yêu cầu', tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'request.created': { text: 'Đã tạo yêu cầu đổi/trả', tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400' },
+  'confirmation.requested': { text: 'Trợ lý AI đang chờ khách xác nhận', tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' },
+  'confirmation.confirmed': { text: 'Khách đã xác nhận yêu cầu', tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'confirmation.cancelled': { text: 'Khách đã huỷ yêu cầu', tone: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
+  'product.create': { text: 'Đã tạo sản phẩm', appendLabel: true, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'product.update': { text: 'Đã cập nhật sản phẩm', appendLabel: true, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
+  'product.delete': { text: 'Đã xoá sản phẩm', appendLabel: true, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'product.image_add': { text: 'Đã thêm ảnh sản phẩm', appendLabel: true, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
+  'product.image_delete': { text: 'Đã xoá ảnh sản phẩm', appendLabel: true, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'category.create': { text: 'Đã tạo danh mục', appendLabel: true, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'category.update': { text: 'Đã cập nhật danh mục', appendLabel: true, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
+  'category.delete': { text: 'Đã xoá danh mục', appendLabel: true, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'order.create': { text: 'Khách đã đặt đơn hàng', appendLabel: true, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'order.cancel': { text: 'Khách đã huỷ đơn hàng', appendLabel: true, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'payment.succeeded': { text: 'Thanh toán thành công', appendLabel: true, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'payment.failed': { text: 'Thanh toán không thành công', appendLabel: true, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'ai_agent.create': { text: 'Đã tạo AI Agent', appendLabel: true, tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400' },
+  'ai_agent.update': { text: 'Đã cập nhật AI Agent', appendLabel: true, tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400' },
+  'ai_agent.set_default': { text: 'Đã đặt AI Agent mặc định', tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400' },
+  'ai_agent.delete': { text: 'Đã xoá AI Agent', tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'ai_agent.archive': { text: 'Đã lưu trữ AI Agent', tone: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
+  'knowledge_scope.create': { text: 'Đã tạo Knowledge scope', tone: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400' },
+  'knowledge_scope.update': { text: 'Đã cập nhật Knowledge scope', tone: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400' },
+  'knowledge_scope.delete': { text: 'Đã xoá Knowledge scope', tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'mcp_server.create': { text: 'Đã thêm MCP Server', tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400' },
+  'mcp_server.update': { text: 'Đã cập nhật MCP Server', tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400' },
+  'mcp_server.enable': { text: 'Đã bật MCP Server', tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  'mcp_server.disable': { text: 'Đã tắt MCP Server', tone: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
+  'mcp_server.delete': { text: 'Đã xoá MCP Server', tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
+  'mcp_server.select_tools': { text: 'Đã cập nhật tool MCP Server', tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400' },
+  'settings.update': { text: 'Đã cập nhật cài đặt cửa hàng', tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' },
+  'openai_key.update': { text: 'Đã cập nhật OpenAI API key', tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400' },
+  'openai_key.delete': { text: 'Đã xoá OpenAI API key', tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' },
 };
+
+function activityStyle(action: string, label: string) {
+  const style = activityStyles[action] ?? { text: 'Đã ghi nhận hoạt động', tone: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' };
+  return { ...style, text: style.appendLabel && label ? `${style.text}: ${label}` : style.text };
+}
 
 function ago(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -106,10 +146,11 @@ export default async function AdminDashboard() {
               <ul className="divide-y divide-gray-100 border-t border-gray-100 dark:divide-white/5 dark:border-white/5">
                 {data.activity.map((item) => {
                   const label = String(item.details.code ?? item.details.name ?? item.details.productCode ?? '');
+                  const activity = activityStyle(item.action, label);
                   return (
                     <li key={item.id} className="flex items-center gap-3 px-5 py-3 text-theme-sm sm:px-6">
-                      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ClockIcon className="size-4" /></span>
-                      <p className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-300"><span className="text-gray-500">{item.actor} </span>{actions[item.action] ?? item.action}{label && <span className="font-medium text-gray-800 dark:text-white/90"> {label}</span>}</p>
+                      <span className={`grid size-8 shrink-0 place-items-center rounded-full ${activity.tone}`}><ClockIcon className="size-4" /></span>
+                      <p className="min-w-0 flex-1 truncate font-medium text-gray-700 dark:text-gray-300">{activity.text}</p>
                       <time dateTime={item.createdAt} className="shrink-0 text-theme-xs text-gray-500">{ago(item.createdAt)}</time>
                     </li>
                   );

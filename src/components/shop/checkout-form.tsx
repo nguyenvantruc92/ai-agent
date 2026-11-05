@@ -4,9 +4,10 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CartSummary } from '@/components/shop/cart-view';
+import { useCooldown } from '@/components/shop/use-cooldown';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/field';
-import { paymentLabels, paymentMethods, type PaymentMethod } from '@/features/orders/customer-schemas';
+import { paymentLabels, type PaymentMethod } from '@/features/orders/customer-schemas';
 import type { Cart } from '@/features/shop/cart';
 import { cn } from '@/lib/cn';
 import { formatVnd } from '@/lib/format';
@@ -18,7 +19,8 @@ const hints: Record<PaymentMethod, string> = {
   card: 'Thanh toán online (giả lập) ngay sau khi đặt hàng.',
 };
 
-export function CheckoutForm({ cart }: { cart: Cart }) {
+/** `paymentMethods` comes from the server (online payment can be switched off); checkout enforces it again. */
+export function CheckoutForm({ cart, paymentMethods }: { cart: Cart; paymentMethods: PaymentMethod[] }) {
   const router = useRouter();
   // One key per page visit: pressing the button twice, or retrying after a network error, can never create two orders.
   const [idempotencyKey] = useState(newKey);
@@ -26,13 +28,14 @@ export function CheckoutForm({ cart }: { cart: Cart }) {
   const [method, setMethod] = useState<PaymentMethod>('COD');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const cooldown = useCooldown();
   const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({ ...form, [key]: event.target.value });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError('');
     const result = await callJson<{ code: string }>('/api/checkout', { ...form, paymentMethod: method, idempotencyKey });
-    if (!result.ok) { setError(result.error); setBusy(false); return; }
+    if (!result.ok) { setError(result.error); setBusy(false); cooldown.start(result.retryAfterSeconds); return; }
     router.push(`/orders/${result.data.code}?placed=1`);
   }
 
@@ -67,7 +70,7 @@ export function CheckoutForm({ cart }: { cart: Cart }) {
         </ul>
         <div className="border-t border-line pt-3"><CartSummary cart={cart} /></div>
         {error && <p role="alert" className="rounded-md bg-sale-soft px-3 py-2 text-sm text-sale">{error} {error.includes('hết hàng') || error.includes('chỉ còn') || error.includes('không còn') ? <Link href="/cart" className="underline">Về giỏ hàng</Link> : null}</p>}
-        <Button type="submit" variant="brand" size="lg" className="w-full" disabled={busy}>{busy ? 'Đang đặt hàng…' : `Đặt hàng · ${formatVnd(cart.totalVnd)}`}</Button>
+        <Button type="submit" variant="brand" size="lg" className="w-full" disabled={busy || cooldown.active}>{busy ? 'Đang đặt hàng…' : cooldown.active ? `Thử lại sau ${cooldown.remaining}s` : `Đặt hàng · ${formatVnd(cart.totalVnd)}`}</Button>
         <p className="text-center text-xs text-ink-muted">Bằng việc đặt hàng, bạn đồng ý với chính sách đổi trả của cửa hàng.</p>
       </aside>
     </form>

@@ -3,7 +3,7 @@ import { catalogMime } from '@/features/catalog/sync';
 import { createDocument, listDocuments } from '@/features/knowledge/repository';
 import { scopesByDocument } from '@/features/knowledge/scopes';
 import { saveUpload, validateUpload } from '@/features/knowledge/files';
-import { requireAdmin, jsonError } from '@/lib/http';
+import { requireAdmin, jsonError, tooManyRequests } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
 import { importCatalog } from '@/features/catalog/import';
 import { env } from '@/lib/env';
@@ -21,11 +21,11 @@ export async function POST(request: Request) {
   const denied = await requireAdmin();
   if (denied) return denied;
   try {
-    const limit = takeRateLimit(`upload:${clientIp(request)}`, env.UPLOAD_RATE_LIMIT, env.UPLOAD_RATE_WINDOW_SECONDS);
-    if (!limit.allowed) return NextResponse.json({ error: 'Quá nhiều lần upload.', retryAfterSeconds: limit.retryAfterSeconds }, { status: 429 });
+    const limit = await takeRateLimit(`upload:${clientIp(request)}`, env.UPLOAD_RATE_LIMIT, env.UPLOAD_RATE_WINDOW_SECONDS);
+    if (!limit.allowed) return tooManyRequests({ error: 'Quá nhiều lần upload.' }, limit.retryAfterSeconds);
     const form = await request.formData();
     const file = form.get('file');
-    if (!(file instanceof File)) throw new Error('Cần chọn file PDF hoặc XLSX.');
+    if (!(file instanceof File)) throw new Error('Cần chọn file PDF, Markdown, TXT hoặc XLSX.');
     const bytes = Buffer.from(await file.arrayBuffer());
     const { extension, mime } = validateUpload(file, bytes);
     // A spreadsheet is a product import, not a knowledge file: it updates the products table.

@@ -17,7 +17,7 @@ export const NOW = new Date('2026-10-27T10:00:00Z');
 export function testAgent(overrides: Partial<AgentRuntimeConfig> = {}): AgentRuntimeConfig {
   const scopes = [{ id: 'scope-policy', name: 'Chính sách', toolName: 'search_policy', description: 'Tìm chính sách và FAQ của cửa hàng.' }];
   const enabledBuiltin = new Set(builtinToolNames);
-  return { agentId: 'agent-1', agentName: 'Test', instructions: 'Bạn là trợ lý thử nghiệm.', model: 'test-model', temperature: 0.3, maxSteps: 5, maxToolCalls: 5, enabledBuiltin, scopes, externalTools: new Map(), tools: buildAgentTools(enabledBuiltin, scopes), ...overrides };
+  return { agentId: 'agent-1', agentName: 'Test', instructions: 'Bạn là trợ lý thử nghiệm.', model: 'test-model', temperature: 0.3, maxSteps: 5, maxToolCalls: 5, enabledBuiltin, scopes, externalTools: new Map(), tools: buildAgentTools(enabledBuiltin, scopes), history: { summaryEnabled: true, summarizeAfterMessages: 24, keepRecentMessages: 16 }, ...overrides };
 }
 const DAY = 24 * 60 * 60 * 1_000;
 

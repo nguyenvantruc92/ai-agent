@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { sql } from '@/db/client';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 import { decryptSecret, encryptSecret } from '@/lib/secrets';
 
 /**
@@ -31,7 +32,7 @@ export async function getOpenAiKey(): Promise<string | null> {
     const stored = await readStored();
     if (stored) key = decryptSecret(stored.value_encrypted);
   } catch (error) {
-    logger.warn({ stage: 'openai_key.unreadable', error: error instanceof Error ? error.message : String(error) });
+    logger.warn({ stage: 'openai_key.unreadable', error: safeError(error) });
   }
   key ??= env.OPENAI_API_KEY?.trim() || null;
   cache = { key, at: Date.now() };

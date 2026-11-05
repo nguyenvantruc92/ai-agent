@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useConfirm, useToast } from '@/components/admin/feedback';
 import { Button } from '@/components/admin-ui/button';
 
-export default function DocumentActions({ id }: { id: string }) {
+export default function DocumentActions({ id, versionId, safetyStatus }: { id: string; versionId?: string; safetyStatus?: string }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
@@ -20,12 +20,18 @@ export default function DocumentActions({ id }: { id: string }) {
     after();
   }
   const reindex = () => run(() => fetch(`/api/admin/documents/${id}/reindex`, { method: 'POST' }), 'Đã xếp hàng index lại.', () => router.refresh());
+  const review = (decision: 'approved' | 'rejected') => run(
+    () => fetch(`/api/admin/documents/${id}/review`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ versionId, decision }) }),
+    decision === 'approved' ? 'Đã duyệt an toàn và xếp hàng index.' : 'Đã từ chối version này.',
+    () => router.refresh(),
+  );
   async function remove() {
     if (!(await confirm({ title: 'Xóa mềm tài liệu này?', message: 'Chatbot sẽ ngừng dùng tài liệu này.', confirmLabel: 'Xóa', danger: true }))) return;
     void run(() => fetch(`/api/admin/documents/${id}`, { method: 'DELETE' }), 'Đã xóa tài liệu.', () => router.push('/admin/knowledge'));
   }
   return (
     <div className="flex items-center gap-2">
+      {safetyStatus === 'needs_review' && versionId && <><Button variant="outline" size="sm" disabled={busy} onClick={() => void review('approved')}>Duyệt an toàn</Button><Button variant="outline" size="sm" disabled={busy} onClick={() => void review('rejected')}>Từ chối</Button></>}
       <Button variant="outline" size="sm" disabled={busy} onClick={() => void reindex()}>Re-index</Button>
       <Button variant="outline" size="sm" className="border-red-200 text-red-500 hover:text-red-600 dark:border-red-500/30" disabled={busy} onClick={() => void remove()}>Xóa</Button>
       <Button variant="ghost" size="sm" onClick={() => router.refresh()}>Làm mới</Button>

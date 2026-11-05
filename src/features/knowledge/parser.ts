@@ -7,6 +7,28 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 
 const MAX_POLICY_CHUNK_TOKENS = 800;
 
+/** Markdown/text fallback: keep heading context and split conservatively by paragraph. */
+export function parseTextDocument(text: string, sourceType: 'policy' | 'product' = 'policy'): ParsedChunk[] {
+  const normalized = text.replace(/\r/g, '').trim();
+  if (!normalized) throw new Error('Tài liệu không có nội dung để index.');
+  let heading = 'Tài liệu cửa hàng';
+  let index = 0;
+  const chunks: ParsedChunk[] = [];
+  for (const section of normalized.split(/(?=^#{1,3}\s+.+$)/m)) {
+    const lines = section.split('\n');
+    const first = lines[0]?.match(/^#{1,3}\s+(.+)$/);
+    if (first) heading = first[1].trim();
+    const body = (first ? lines.slice(1) : lines).join('\n').trim();
+    if (!body) continue;
+    for (const part of splitByTokens(body, /\n\n+/, '\n\n')) {
+      index += 1;
+      const content = `[Nguồn: ${heading}]\n${part}`;
+      chunks.push({ sourceId: `policy:${slugify(heading)}:${index}`, sourceType, title: heading, content, metadata: { section: slugify(heading), updated_at: null }, contentHash: hash(content) });
+    }
+  }
+  return chunks;
+}
+
 /** Splits text on sentence boundaries so no piece exceeds MAX_POLICY_CHUNK_TOKENS. */
 function splitByTokens(text: string, separator: RegExp, joiner: string) {
   const parts = text.split(separator).filter(Boolean);

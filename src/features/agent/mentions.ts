@@ -1,4 +1,4 @@
-import type { SourceRef } from '@/features/chat/rag-answer';
+import type { SourceRef } from '@/features/chat/answer';
 
 const norm = (value: string) => value.normalize('NFC').toLocaleLowerCase('vi-VN');
 

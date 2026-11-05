@@ -13,7 +13,7 @@ import { Input } from '@/components/admin-ui/input';
 import { cn } from '@/lib/cn';
 import { friendlyError } from '@/lib/friendly-error';
 
-type Document = { id: string; scopes?: { id: string; name: string }[]; original_filename: string; status: string; created_at: string; version?: number; version_status?: string; active_version?: number | null; error?: string | null };
+type Document = { id: string; scopes?: { id: string; name: string }[]; original_filename: string; status: string; created_at: string; version?: number; version_status?: string; safety_status?: 'pending_scan' | 'needs_review' | 'approved' | 'rejected'; active_version?: number | null; error?: string | null };
 type RetrievalResult = { traceId: string; chunks: { source_id: string; title: string; similarity: number }[]; queries: { name: string; thresholded: boolean; results: { id: string; score: number }[] }[] };
 
 export default function KnowledgeClient() {
@@ -72,10 +72,10 @@ export default function KnowledgeClient() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">PDF chính sách được worker index; chat dùng version active cho đến khi version mới ready. Một file chỉ được AI tra cứu khi thuộc ít nhất một scope được gán cho Agent. File XLSX sẽ import vào danh sách sản phẩm.</p>
+        <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">PDF, Markdown và TXT được worker quét an toàn rồi index; chat dùng version active cho đến khi version mới được duyệt và ready. Một file chỉ được AI tra cứu khi thuộc ít nhất một scope được gán cho Agent. File XLSX sẽ import vào danh sách sản phẩm.</p>
         <label className={cn('inline-flex h-10 cursor-pointer items-center gap-2 rounded-[10px] bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600', busy && 'pointer-events-none opacity-60')}>
-          <UploadIcon className="size-5" />{busy ? 'Đang upload…' : 'Upload PDF/XLSX'}
-          <input className="sr-only" type="file" accept=".pdf,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} />
+          <UploadIcon className="size-5" />{busy ? 'Đang upload…' : 'Upload tài liệu'}
+          <input className="sr-only" type="file" accept=".pdf,.md,.txt,.xlsx,application/pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy} onChange={upload} />
         </label>
       </div>
 
@@ -90,7 +90,7 @@ export default function KnowledgeClient() {
                   <td className={td}><Link className="font-medium text-gray-800 hover:underline dark:text-white/90" href={`/admin/knowledge/${doc.id}`}>{doc.original_filename}</Link>{doc.error && <p className="mt-1 text-theme-xs text-red-500">{friendlyError(doc.error)}</p>}</td>
                   <td className={td}>{doc.scopes?.length ? <span className="inline-flex flex-wrap gap-1.5">{doc.scopes.map((scope) => <Link key={scope.id} href={`/admin/knowledge/scopes/${scope.id}`}><Badge color="gray" size="sm">{scope.name}</Badge></Link>)}</span> : <Badge color="warning" size="sm">Chưa thuộc scope</Badge>}</td>
                   <td className={td}>{doc.active_version ? `v${doc.active_version}` : '—'}</td>
-                  <td className={td}><span className="inline-flex items-center gap-2">v{doc.version ?? 1} <StatusBadge status={doc.version_status ?? doc.status} /></span></td>
+                  <td className={td}><span className="inline-flex items-center gap-2">v{doc.version ?? 1} <StatusBadge status={doc.safety_status === 'needs_review' ? 'review' : doc.safety_status === 'rejected' ? 'rejected' : doc.version_status ?? doc.status} /></span></td>
                   <td className={td}><Button size="xs" variant="ghost" onClick={() => void reindex(doc.id)}>Re-index</Button><Button size="xs" variant="ghost" className="text-red-500 hover:text-red-600" onClick={() => void remove(doc.id)}>Xóa</Button></td>
                 </tr>
               ))}

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from '@/db/client';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 
 /** The catalog is indexed as one synthetic knowledge document built from the products table. */
 export const catalogMime = 'application/x-catalog-db';
@@ -36,5 +37,5 @@ export async function queueCatalogReindex() {
 /** Chat reads product chunks, so stock/price changes re-index. A queue failure must never undo a committed change. */
 export async function syncCatalog() {
   try { await queueCatalogReindex(); }
-  catch (error) { logger.warn({ stage: 'catalog.sync_failed', error: error instanceof Error ? error.message : String(error) }); }
+  catch (error) { logger.warn({ stage: 'catalog.sync_failed', error: safeError(error) }); }
 }

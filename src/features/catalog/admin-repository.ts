@@ -3,6 +3,7 @@ import type { TransactionSql } from 'postgres';
 import { sql } from '@/db/client';
 import type { CategoryInput, ProductCreateInput, ProductListQuery, ProductUpdateInput, VariantInput } from '@/features/catalog/schemas';
 import { MAX_IMAGES_PER_PRODUCT, imageUrl } from '@/features/catalog/images';
+import { invalidateCategoryNames } from '@/features/catalog/category-names';
 import { syncCatalog } from '@/features/catalog/sync';
 import { audit } from '@/features/orders/repository';
 import { HttpError } from '@/lib/http';
@@ -41,6 +42,7 @@ export async function createCategory(input: CategoryInput) {
   if (existing) throw new HttpError('Tên hoặc slug danh mục đã tồn tại.', 409);
   await sql`INSERT INTO categories (id, slug, name, description, sort_order, is_active) VALUES (${id}, ${slug}, ${input.name}, ${input.description}, ${input.sortOrder}, ${input.isActive})`;
   await audit(actor, 'category.create', 'category', id, { name: input.name });
+  invalidateCategoryNames();
   await syncCatalog();
   return getCategory(id);
 }
@@ -56,6 +58,7 @@ export async function updateCategory(id: string, input: CategoryInput) {
     WHERE id = ${id}
   `;
   await audit(actor, 'category.update', 'category', id, { name: input.name, isActive: input.isActive });
+  invalidateCategoryNames();
   await syncCatalog();
   return getCategory(id);
 }
@@ -66,6 +69,7 @@ export async function deleteCategory(id: string) {
   if (count > 0) throw new HttpError(`Danh mục còn ${count} sản phẩm. Hãy chuyển sản phẩm sang danh mục khác hoặc chỉ ẩn danh mục.`, 409);
   await sql`DELETE FROM categories WHERE id = ${id}`;
   await audit(actor, 'category.delete', 'category', id, { name: current.name });
+  invalidateCategoryNames();
   await syncCatalog();
 }
 

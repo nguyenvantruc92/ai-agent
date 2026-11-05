@@ -4,6 +4,7 @@ import { expiredApprovals } from '@/features/agent/approvals';
 import { createStore, getAgentRuntime } from '@/features/agent/runtime';
 import { decideAndResume } from '@/features/agent/session';
 import { workerLogger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 
 const RETENTION_DAYS = 30;
 
@@ -15,7 +16,7 @@ export async function expireApprovals() {
       await decideAndResume({ approvalId: approval.id, decision: 'expired', reviewer: 'system', note: null, traceId });
       workerLogger.info({ trace_id: traceId, stage: 'maintenance.approval_expired', approvalId: approval.id });
     } catch (error) {
-      workerLogger.error({ trace_id: traceId, stage: 'maintenance.expire_failed', approvalId: approval.id, error: error instanceof Error ? error.message : String(error) });
+      workerLogger.error({ trace_id: traceId, stage: 'maintenance.expire_failed', approvalId: approval.id, error: safeError(error) });
     }
   }
 }

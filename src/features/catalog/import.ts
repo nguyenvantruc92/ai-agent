@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sql } from '@/db/client';
+import { invalidateCategoryNames } from '@/features/catalog/category-names';
 import { queueCatalogReindex } from '@/features/catalog/sync';
 import { importStock, parseCatalogWorkbook } from '@/features/catalog/xlsx';
 import { slugify } from '@/lib/slug';
@@ -62,6 +63,7 @@ export async function importCatalog(buffer: Buffer): Promise<ImportSummary & { r
     }
   });
 
+  invalidateCategoryNames();
   const { queued } = await queueCatalogReindex();
   return { ...summary, reindexQueued: queued };
 }

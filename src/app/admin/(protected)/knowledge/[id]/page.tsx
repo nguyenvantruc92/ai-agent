@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import DocumentActions from '@/components/document-actions';
+import DocumentLifecycleForm from '@/components/admin/document-lifecycle-form';
 import { th, td } from '@/components/admin/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { getDocument, listChunks, listJobs, listVersions } from '@/features/knowledge/repository';
@@ -36,8 +37,13 @@ export default async function KnowledgeDetail({ params }: { params: Promise<{ id
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">Đang phục vụ chat: <strong>{document.active_version ? `v${document.active_version}` : 'chưa có version ready'}</strong> · Version mới nhất: v{document.version} <StatusBadge status={document.version_status ?? document.status} /></p>
             {document.error && <p className="mt-2 text-sm text-red-500">Lỗi version mới nhất: {friendlyError(document.error)}</p>}
           </div>
-          <DocumentActions id={id} />
+          <DocumentActions id={id} versionId={document.version_id} safetyStatus={document.safety_status} />
         </div>
+      </section>
+
+      <section className={section}>
+        <h2 className={heading}>Phân loại và hiệu lực</h2>
+        <div className="p-5 sm:p-6"><DocumentLifecycleForm id={id} initial={{ contentKind: document.content_kind, policyKey: document.policy_key, effectiveFrom: document.effective_from, effectiveTo: document.effective_to, supersedesDocumentId: document.supersedes_document_id }} /></div>
       </section>
 
       <section className={section}>
@@ -46,7 +52,7 @@ export default async function KnowledgeDetail({ params }: { params: Promise<{ id
           <thead className={head}><tr><th className={th}>Version</th><th className={th}>Trạng thái</th><th className={th}>Chunks</th><th className={th}>Tạo lúc</th><th className={th}>Ready lúc</th></tr></thead>
           <tbody className={body}>{versions.map((version) => <tr key={version.id}>
             <td className={td}>v{version.version}{version.id === document.active_version_id && <span className="ml-2 text-theme-xs font-medium text-green-600">active</span>}</td>
-            <td className={td}><StatusBadge status={version.status} />{version.error && <p className="mt-1 text-theme-xs text-red-500">{friendlyError(version.error)}</p>}</td>
+            <td className={td}><span className="inline-flex items-center gap-2"><StatusBadge status={version.status} /><StatusBadge status={version.safety_status} /></span>{version.safety_findings.length > 0 && <p className="mt-1 text-theme-xs text-amber-600">Phát hiện: {version.safety_findings.map((finding) => finding.rule).join(', ')}</p>}{version.error && <p className="mt-1 text-theme-xs text-red-500">{friendlyError(version.error)}</p>}</td>
             <td className={td}>{version.chunk_count}</td>
             <td className={td}>{time(version.created_at)}</td>
             <td className={td}>{time(version.ready_at)}</td>

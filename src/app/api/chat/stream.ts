@@ -4,6 +4,8 @@ import type { TurnEvent, TurnResult } from '@/features/agent/session';
 import { productCardsForSources } from '@/features/chat/product-cards';
 import type { visitorSession } from '@/features/chat/visitor';
 import { logger } from '@/lib/logger';
+import { metrics, safely } from '@/lib/metrics';
+import { safeError } from '@/lib/redact';
 
 const encoder = new TextEncoder();
 
@@ -32,22 +34,25 @@ export function turnStream(options: {
         const base = { citedSourceIds: [] as string[], insufficientInformation: false, sources: [] as unknown[], traceId };
         if ('resumed' in result) {
           send('complete', { ...base, answer: 'Thao tác này đã được xử lý trước đó.', refresh: true });
+          safely(() => metrics.chatTurn.observe({ kind: 'replayed', outcome: 'ok' }, (Date.now() - startedAt) / 1_000));
         } else {
           const refresh = result.kind !== 'blocked' && result.toolCalls.some((name) => storefrontTools.has(name));
           const debug = options.debug && result.kind !== 'blocked' ? { toolCalls: result.toolCalls } : {};
           if (result.kind === 'answer') {
             // A failed lookup must not lose the answer: the widget just shows no product boxes.
             const products = await productCardsForSources(result.answer.sources).catch(() => []);
-            send('complete', { ...base, answer: result.answer.answer, citedSourceIds: result.answer.citedSourceIds, insufficientInformation: result.answer.insufficientInformation, sources: result.answer.sources, products, refresh, ...debug });
+            send('complete', { ...base, answer: result.answer.answer, citedSourceIds: result.answer.citedSourceIds, insufficientInformation: result.answer.insufficientInformation, sources: result.answer.sources, products, refresh, ...(result.answer.diagnostics.route === 'unavailable' ? { unavailable: true } : {}), ...debug });
           }
           else if (result.kind === 'pending') send('complete', { ...base, answer: result.message, pendingApproval: { id: result.approval.approvalId, summary: result.approval.summary }, refresh, ...debug });
           else if (result.kind === 'confirm') send('complete', { ...base, answer: result.message, pendingConfirmation: { id: result.confirmation.confirmationId, action: result.confirmation.action, summary: result.confirmation.summary, details: result.confirmation.details }, refresh, ...debug });
           else send('complete', { ...base, answer: result.message, ...(result.approvalId ? { pendingApproval: { id: result.approvalId } } : {}), ...(result.confirmationId ? { pendingConfirmation: { id: result.confirmationId } } : {}) });
           logger.info({ trace_id: traceId, stage: 'chat.completed', kind: result.kind, latencyMs: Date.now() - startedAt });
+          safely(() => metrics.chatTurn.observe({ kind: result.kind, outcome: 'ok' }, (Date.now() - startedAt) / 1_000));
         }
       } catch (error) {
         const aborted = request.signal.aborted;
-        logger.error({ trace_id: traceId, stage: aborted ? 'chat.aborted' : 'chat.failed', latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+        logger.error({ trace_id: traceId, stage: aborted ? 'chat.aborted' : 'chat.failed', latencyMs: Date.now() - startedAt, error: safeError(error) });
+        safely(() => metrics.chatTurn.observe({ kind: 'error', outcome: aborted ? 'aborted' : 'failed' }, (Date.now() - startedAt) / 1_000));
         if (!aborted) send('error', { message: 'Không thể hoàn tất câu trả lời. Vui lòng thử lại.', traceId });
       } finally {
         controller.close();

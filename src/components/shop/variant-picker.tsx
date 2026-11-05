@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { OpenChatButton } from '@/components/shop/chat-widget';
 import { buttonClass } from '@/components/ui/button';
 import type { StoreVariant } from '@/features/catalog/queries';
 import { cn } from '@/lib/cn';
@@ -67,7 +68,7 @@ export function VariantPicker({ variants, sizes, colors, productName }: { varian
       )}
 
       <div>
-        <div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium">Size</span><Link href="/chat" className="text-ink-muted underline underline-offset-4 hover:text-ink">Chọn size giúp tôi</Link></div>
+        <div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium">Size</span><OpenChatButton className="text-ink-muted underline underline-offset-4 hover:text-ink">Chọn size giúp tôi</OpenChatButton></div>
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Kích cỡ">
           {sizes.map((item) => {
             const left = available(color, item);
@@ -100,7 +101,7 @@ export function VariantPicker({ variants, sizes, colors, productName }: { varian
           {note.text} {note.ok && <Link href="/cart" className="font-medium underline">Xem giỏ hàng →</Link>}
         </p>
       )}
-      <Link href={`/chat`} className={cn(buttonClass({ variant: 'outline' }), 'w-full')} aria-label={`Hỏi trợ lý AI về ${productName}`}>Hỏi trợ lý AI về sản phẩm này</Link>
+      <OpenChatButton className={cn(buttonClass({ variant: 'outline' }), 'w-full')} aria-label={`Hỏi trợ lý AI về ${productName}`}>Hỏi trợ lý AI về sản phẩm này</OpenChatButton>
     </div>
   );
 }

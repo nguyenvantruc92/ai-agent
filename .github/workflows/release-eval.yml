@@ -1,0 +1,89 @@
+name: Release eval
+
+# Paid run (real OpenAI calls, about 80 golden cases). Runs on demand and for version tags; a GitHub Release is created
+# only when both eval gates pass, so a release always has an eval artifact behind it.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-eval
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Holds the OPENAI_API_KEY secret (a key with its own budget); add required reviewers to approve each paid run.
+    environment: staging-eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write staging .env
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          test -n "$OPENAI_API_KEY" || { echo "::error::Secret OPENAI_API_KEY is missing in environment staging-eval"; exit 1; }
+          cp .env.example .env
+          set_env() { sed -i "/^$1=/d" .env; printf '%s=%s\n' "$1" "$2" >> .env; }
+          set_env OPENAI_API_KEY "$OPENAI_API_KEY"
+          set_env INTERNAL_MCP_TOKEN "$(openssl rand -hex 32)"
+          set_env ADMIN_SESSION_SECRET "$(openssl rand -hex 32)"
+          set_env PAYMENT_SIMULATION_ENABLED false
+
+      - name: Start staging stack
+        run: docker compose up -d --build --wait db mcp web worker
+
+      - name: Wait for web (migrations run on start)
+        run: timeout 300 bash -c 'until curl -fsS -o /dev/null http://127.0.0.1:3000/; do sleep 3; done'
+
+      - name: Seed demo data
+        run: docker compose exec -T web pnpm db:seed
+
+      - id: ready
+        name: Wait for knowledge indexing
+        run: docker compose exec -T web pnpm eval:ready 900
+
+      - name: RAG eval gate
+        run: docker compose exec -T -e EVAL_COMMIT=${{ github.sha }} web pnpm eval:rag --gate
+
+      # Runs even when the RAG gate failed, so one run reports both.
+      - name: Agent eval gate
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: docker compose exec -T -e EVAL_COMMIT=${{ github.sha }} web pnpm eval:agent --gate
+
+      - name: Upload eval results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.sha }}
+          # Logs contain no customer text or PII (see src/lib/redact.ts), only trace ids, stages and timings.
+          path: |
+            data/eval-results/
+            data/logs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop staging stack
+        if: always()
+        run: docker compose down -v
+
+  release:
+    needs: eval
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: eval-results-${{ github.sha }}
+          path: artifact
+      - name: Create GitHub Release with the eval results attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes artifact/eval-results/*.json

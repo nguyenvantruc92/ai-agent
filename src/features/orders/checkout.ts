@@ -3,6 +3,7 @@ import { sql } from '@/db/client';
 import { syncCatalog } from '@/features/catalog/sync';
 import { isOnline, type CheckoutInput } from '@/features/orders/customer-schemas';
 import { recordOrderEvent } from '@/features/orders/order-ops';
+import { assertPaymentMethodAvailable } from '@/features/orders/payment-availability';
 import { paymentGateway } from '@/features/orders/payments';
 import { audit } from '@/features/orders/repository';
 import { getShopSettings, shippingFor } from '@/features/shop/settings';
@@ -26,6 +27,8 @@ export async function checkout(visitorId: string, input: CheckoutInput): Promise
 
     const [replay] = await tx<{ id: string }[]>`SELECT id FROM orders WHERE visitor_id = ${visitorId} AND idempotency_key = ${input.idempotencyKey}`;
     if (replay) return { code: replay.id, replayed: true };
+    // After the replay check: retrying an order placed before online payment was switched off still returns it.
+    assertPaymentMethodAvailable(input.paymentMethod);
 
     const settings = await getShopSettings(tx);
     const [{ recent }] = await tx<{ recent: number }[]>`SELECT count(*)::int AS recent FROM orders WHERE visitor_id = ${visitorId} AND ordered_at > now() - interval '1 hour'`;

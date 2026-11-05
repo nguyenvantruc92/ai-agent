@@ -1,0 +1,3 @@
+ALTER TABLE ai_agents
+  ADD COLUMN IF NOT EXISTS max_tokens integer NOT NULL DEFAULT 500
+  CHECK (max_tokens BETWEEN 1 AND 32768);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { discoverInput, discoverTools } from '@/features/mcp/servers';
-import { apiError, HttpError, requireAdmin } from '@/lib/http';
+import { apiError, HttpError, rateLimitError, requireAdmin } from '@/lib/http';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 
 /**
@@ -12,8 +12,8 @@ export async function POST(request: Request) {
   if (denied) return denied;
   try {
     const input = discoverInput.parse(await request.json());
-    const limit = takeRateLimit(`mcp-test:${clientIp(request)}`, 30, 600);
-    if (!limit.allowed) throw new HttpError(`Thao tác quá nhiều lần. Thử lại sau ${limit.retryAfterSeconds} giây.`, 429);
+    const limit = await takeRateLimit(`mcp-test:${clientIp(request)}`, 30, 600);
+    if (!limit.allowed) throw rateLimitError('Thao tác quá nhiều lần.', limit.retryAfterSeconds);
     return NextResponse.json(await discoverTools(input));
   } catch (error) { return apiError(error); }
 }

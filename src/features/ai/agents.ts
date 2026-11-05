@@ -3,11 +3,15 @@ import { sql } from '@/db/client';
 import { ensureAiDefaults } from '@/features/ai/seed';
 import { buildAgentTools, builtinToolNames, externalModelName, type ExternalToolSpec, type ScopeToolSpec } from '@/features/agent/tools';
 import type { SelectedTool } from '@/features/mcp/servers';
+import { env } from '@/lib/env';
 import { HttpError } from '@/lib/http';
 
 export type AgentRow = {
   id: string; name: string; slug: string; description: string; instructions: string; model: string; temperature: number;
-  max_steps: number; max_tool_calls: number; is_active: boolean; is_default: boolean; archived_at: string | null; created_at: string; updated_at: string;
+  max_tokens: number; max_steps: number; max_tool_calls: number;
+  /** NULL = env default (see migration 0016). */
+  summary_enabled: boolean | null; summarize_after_messages: number | null; keep_recent_messages: number | null;
+  is_active: boolean; is_default: boolean; archived_at: string | null; created_at: string; updated_at: string;
 };
 
 type RawAgent = Omit<AgentRow, 'temperature'> & { temperature: string };
@@ -22,6 +26,7 @@ export type AgentRuntimeConfig = {
   instructions: string;
   model: string;
   temperature: number;
+  maxTokens: number;
   maxSteps: number;
   maxToolCalls: number;
   /** Model-facing names of the built-in tools this agent may call. */
@@ -31,7 +36,18 @@ export type AgentRuntimeConfig = {
   externalTools: ReadonlyMap<string, ExternalToolSpec>;
   /** Tool schemas bound to the model (enabled built-ins + one per scope + final_answer). */
   tools: StructuredToolInterface[];
+  /** Conversation-history window and summary, resolved from the agent with env defaults. */
+  history: HistorySettings;
 };
+
+export type HistorySettings = { summaryEnabled: boolean; summarizeAfterMessages: number; keepRecentMessages: number };
+
+/** Agent columns override the env defaults; NULL means "use the default". */
+export const resolveHistory = (agent: Pick<AgentRow, 'summary_enabled' | 'summarize_after_messages' | 'keep_recent_messages'>): HistorySettings => ({
+  summaryEnabled: agent.summary_enabled ?? env.AGENT_SUMMARY_ENABLED,
+  summarizeAfterMessages: agent.summarize_after_messages ?? env.AGENT_SUMMARIZE_AFTER_MESSAGES,
+  keepRecentMessages: agent.keep_recent_messages ?? env.AGENT_KEEP_RECENT_MESSAGES,
+});
 
 export async function getDefaultAgent(): Promise<AgentRow> {
   await ensureAiDefaults();
@@ -128,9 +144,10 @@ async function buildRuntime(agent: AgentRow): Promise<AgentRuntimeConfig> {
   const enabledBuiltin = new Set(builtin);
   return {
     agentId: agent.id, agentName: agent.name, instructions: agent.instructions, model: agent.model, temperature: agent.temperature,
-    maxSteps: agent.max_steps, maxToolCalls: agent.max_tool_calls, enabledBuiltin, scopes,
+    maxTokens: agent.max_tokens, maxSteps: agent.max_steps, maxToolCalls: agent.max_tool_calls, enabledBuiltin, scopes,
     externalTools: new Map(externals.map((spec) => [spec.modelName, spec])),
     tools: buildAgentTools(enabledBuiltin, scopes, externals),
+    history: resolveHistory(agent),
   };
 }
 export async function loadAgentRuntime(threadId: string): Promise<AgentRuntimeConfig> {

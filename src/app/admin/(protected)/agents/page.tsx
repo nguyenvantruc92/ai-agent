@@ -4,6 +4,7 @@ import { Badge } from '@/components/admin-ui/badge';
 import { Button } from '@/components/admin-ui/button';
 import { PlusIcon, SparkleIcon } from '@/components/admin-ui/icons';
 import { listAgents } from '@/features/ai/agents';
+import { modelLabel } from '@/features/ai/models';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'AI Agents · Admin' };
@@ -12,7 +13,7 @@ export default async function AgentsPage() {
   const agents = await listAgents();
   return (
     <div className="space-y-6">
-      <PageHeader title="AI Agents" description="Agent mặc định trả lời khách trên website. Mỗi Agent có hướng dẫn riêng, Knowledge scope và tool được bật; thử Agent bằng Chat thử trước khi đặt làm mặc định."
+      <PageHeader title="AI Agents" description="Agent mặc định trả lời khách trên website. Mỗi Agent có hướng dẫn riêng, Knowledge scope và tool được bật."
         actions={<Link href="/admin/agents/new"><Button><PlusIcon />Thêm Agent</Button></Link>} />
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         <div className="overflow-x-auto">
@@ -26,9 +27,8 @@ export default async function AgentsPage() {
                 <tr key={agent.id} className="hover:bg-gray-50 dark:hover:bg-white/2">
                   <td className={td}>
                     <Link className="font-medium text-gray-800 hover:underline dark:text-white/90" href={`/admin/agents/${agent.id}`}>{agent.name}</Link>
-                    {agent.description && <p className="mt-0.5 max-w-md text-theme-xs text-gray-500 dark:text-gray-400">{agent.description}</p>}
                   </td>
-                  <td className={td}><code className="text-xs">{agent.model}</code></td>
+                  <td className={td}>{modelLabel(agent.model)}</td>
                   <td className={`${td} text-end tabular-nums`}>{agent.scope_count}</td>
                   <td className={`${td} text-end tabular-nums`}>{agent.server_count}</td>
                   <td className={`${td} text-end tabular-nums`}>{agent.tool_count}</td>

@@ -13,3 +13,4 @@ data/eval-results/*
 
 # Course slides are reference material, not part of the project
 slides/
+test-results/

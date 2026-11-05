@@ -10,7 +10,7 @@ type Context = { params: Promise<{ code: string }> };
 /** Body (optional): { phone } when the order was not placed from this browser. */
 export async function POST(request: Request, { params }: Context) {
   try {
-    guardWrite(request, 'order-action', 20, 60);
+    await guardWrite(request, 'order-action', 20, 60);
     const session = await visitorSession();
     const { phone } = orderActionInput.parse(await readOptionalJson(request));
     return NextResponse.json(await cancelCustomerOrder((await params).code, { visitorId: session.isNew ? undefined : session.visitorId, phone }));

@@ -10,19 +10,24 @@ const uuid = z.string().uuid('ID không hợp lệ.');
 export const agentInput = z.object({
   name: z.string().trim().min(2, 'Tên cần ít nhất 2 ký tự.').max(80, 'Tên tối đa 80 ký tự.'),
   slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,48}$/, 'Mã (slug) gồm chữ thường, số, dấu gạch ngang; 2–49 ký tự.'),
-  description: z.string().trim().max(300, 'Mô tả tối đa 300 ký tự.').default(''),
   // The placeholders ({{today}}, ...) belong to the locked core: one typed here would be filled instead of the core's own.
   instructions: z.string().trim().min(20, 'Hướng dẫn cần ít nhất 20 ký tự.').max(6000, 'Hướng dẫn tối đa 6000 ký tự.')
     .refine((value) => !/\{\{|\}\}/.test(value), 'Hướng dẫn không được chứa {{ hoặc }} (dành cho hệ thống).'),
   model: z.string().trim().min(1),
   temperature: z.number().min(0, 'Temperature từ 0 đến 2.').max(2, 'Temperature từ 0 đến 2.'),
+  maxTokens: z.number().int().min(1).max(32_768).default(500),
   maxSteps: z.number().int().min(1).max(20),
   maxToolCalls: z.number().int().min(1).max(20),
   isActive: z.boolean().default(true),
+  /** Conversation history; null = system default (env). Same ranges as the DB check in migration 0016. */
+  summaryEnabled: z.boolean().nullable().default(null),
+  summarizeAfterMessages: z.number().int().min(8, 'Ngưỡng tóm tắt từ 8 đến 200 tin nhắn.').max(200, 'Ngưỡng tóm tắt từ 8 đến 200 tin nhắn.').nullable().default(null),
+  keepRecentMessages: z.number().int().min(4, 'Giữ nguyên văn từ 4 đến 100 tin nhắn.').max(100, 'Giữ nguyên văn từ 4 đến 100 tin nhắn.').nullable().default(null),
   scopeIds: z.array(uuid).max(50).default([]),
   /** MCP servers the agent uses. It gets every tool ticked on each server (tools are chosen on the MCP Server page). */
   mcpServerIds: z.array(uuid).max(50).default([]),
-});
+}).refine((input) => input.summarizeAfterMessages === null || input.keepRecentMessages === null || input.summarizeAfterMessages > input.keepRecentMessages,
+  { message: 'Ngưỡng tóm tắt phải lớn hơn số tin nhắn giữ nguyên văn.', path: ['summarizeAfterMessages'] });
 export type AgentInput = z.infer<typeof agentInput>;
 
 export type AgentDetail = AgentRow & { scopeIds: string[]; mcpServerIds: string[]; thread_count: number };
@@ -66,8 +71,9 @@ export async function createAgent(input: AgentInput) {
   const id = randomUUID();
   await sql.begin(async (tx) => {
     await tx`
-      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_steps, max_tool_calls, is_active, is_default)
-      VALUES (${id}, ${input.name}, ${input.slug}, ${input.description}, ${input.instructions}, ${input.model}, ${input.temperature}, ${input.maxSteps}, ${input.maxToolCalls}, ${input.isActive}, false)
+      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_tokens, max_steps, max_tool_calls, summary_enabled, summarize_after_messages, keep_recent_messages, is_active, is_default)
+      VALUES (${id}, ${input.name}, ${input.slug}, '', ${input.instructions}, ${input.model}, ${input.temperature}, ${input.maxTokens}, ${input.maxSteps}, ${input.maxToolCalls},
+        ${input.summaryEnabled}, ${input.summarizeAfterMessages}, ${input.keepRecentMessages}, ${input.isActive}, false)
     `;
     await writeBindings(tx as never, id, input);
   });
@@ -82,8 +88,9 @@ export async function updateAgent(id: string, input: AgentInput) {
   await validateBindings(input);
   await sql.begin(async (tx) => {
     await tx`
-      UPDATE ai_agents SET name = ${input.name}, slug = ${input.slug}, description = ${input.description}, instructions = ${input.instructions}, model = ${input.model},
-        temperature = ${input.temperature}, max_steps = ${input.maxSteps}, max_tool_calls = ${input.maxToolCalls}, is_active = ${input.isActive}, updated_at = now()
+      UPDATE ai_agents SET name = ${input.name}, slug = ${input.slug}, instructions = ${input.instructions}, model = ${input.model},
+        temperature = ${input.temperature}, max_tokens = ${input.maxTokens}, max_steps = ${input.maxSteps}, max_tool_calls = ${input.maxToolCalls},
+        summary_enabled = ${input.summaryEnabled}, summarize_after_messages = ${input.summarizeAfterMessages}, keep_recent_messages = ${input.keepRecentMessages}, is_active = ${input.isActive}, updated_at = now()
       WHERE id = ${id}
     `;
     await writeBindings(tx as never, id, input);

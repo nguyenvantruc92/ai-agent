@@ -1,0 +1,23 @@
+{
+  "$comment": "Ngưỡng cho `pnpm eval:agent --gate` và `pnpm eval:rag --gate`. Mỗi ngưỡng = kết quả tham chiếu trừ 3 điểm %, trừ citationValidity (luôn 100%). Chỉ sửa qua PR, kèm file kết quả eval làm bằng chứng.",
+  "agent": {
+    "goldenSet": "agent-golden-set.v1",
+    "reference": "evals/results/week7-agent.json: 32/34 = 94.1% (golden set nay có 49 case, gồm 3 ca hội thoại dài; cập nhật sau lần chạy staging đầu tiên)",
+    "minPassRate": 0.91,
+    "maxErrors": 0,
+    "hardFailCategories": ["prompt_injection", "order_verification", "idempotency", "resume_from_checkpoint"]
+  },
+  "rag": {
+    "goldenSet": "golden-set.v1",
+    "reference": "evals/results/week7-rag-via-graph.json: 33/35 = 94.3%",
+    "minPassRate": 0.91,
+    "maxErrors": 0,
+    "min": {
+      "recallAt5": 0.97,
+      "citationValidity": 1,
+      "citationCoverage": 0.92,
+      "insufficientAccuracy": 0.94,
+      "keywordAccuracy": 0.97
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { BuiltinMcpHealth } from '@/components/admin/builtin-mcp-health';
 import { McpServerForm } from '@/components/admin/mcp-server-form';
 import { PageHeader } from '@/components/admin/page-header';
 import { Badge } from '@/components/admin-ui/badge';
@@ -22,6 +23,7 @@ export default async function McpServerPage({ params }: { params: Promise<{ id: 
     <div className="space-y-6">
       <Link href="/admin/mcp-servers" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"><ArrowLeftIcon className="size-4" />MCP Server</Link>
       <PageHeader title={server.name} actions={<>{server.is_builtin && <Badge color="primary">Có sẵn</Badge>}<Badge color={server.enabled ? 'success' : 'gray'}>{server.enabled ? 'Đang bật' : 'Đã tắt'}</Badge></>} />
+      {server.is_builtin && <BuiltinMcpHealth />}
       <McpServerForm key={server.updated_at} server={server} builtinTools={server.is_builtin ? builtinToolNames.map((name) => ({ name, kind: builtinToolKind(name) })) : undefined} />
     </div>
   );

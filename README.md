@@ -1,5 +1,7 @@
 # Fashion Tomodev Assistant — Week 6 & Week 7
 
+Tài liệu Markdown hoá kiến thức nền tảng của ba buổi học (RAG, Agents và case study triển khai an toàn) nằm tại [docs/coursework](docs/coursework/README.md). Đây là chuẩn tham chiếu khi thay đổi AI pipeline; code, test và cấu hình đang chạy của repo vẫn là nguồn sự thật triển khai.
+
 Trợ lý tiếng Việt cho cửa hàng thời trang nam:
 
 - **Week 6:** chatbot RAG cho catalog và FAQ/chính sách. Dữ liệu được index vào PostgreSQL + pgvector; câu trả lời chỉ được hoàn tất khi mọi citation thuộc tập chunks đã đưa vào prompt.
@@ -41,7 +43,7 @@ Agent cũng bán hàng qua MCP: `search_products`, `view_cart`, `add_to_cart`, `
 
 1. Gửi: `Tôi muốn mua 2 áo sơ mi Oxford trắng size M`. Agent tìm sản phẩm, thêm vào giỏ (số trên biểu tượng giỏ ở header cập nhật ngay).
 2. Gửi họ tên, số điện thoại, địa chỉ và hình thức thanh toán để đặt hàng. Agent **không** tạo đơn: khung chat hiện thẻ chi tiết đơn với nút **Xác nhận** / **Huỷ**. Chỉ cú bấm từ trình duyệt của bạn (`POST /api/chat/confirmations/:id`) mới tạo đơn; MCP chạy đúng nội dung thẻ đã hiện, từ chối nếu giỏ/giá đã đổi, và mỗi xác nhận chỉ dùng một lần. Xác nhận hết hạn sau 30 phút.
-3. Đơn đặt qua chat xem được ở `/orders/<mã>`; đơn thanh toán online chờ thanh toán ở đó. `Hủy đơn FT-… ` cũng cần bấm Xác nhận, chỉ cho đơn đang xử lý và chưa thanh toán.
+3. Đơn đặt qua chat xem được ở `/orders/<mã>`; đơn thanh toán online chờ thanh toán ở đó. Thanh toán online là **giả lập** (khách tự chọn thành công/thất bại) nên mặc định **tắt** (`PAYMENT_SIMULATION_ENABLED=false`): khi đó web và chat chỉ nhận COD, còn `POST /api/orders/:code/pay` trả 404. Muốn demo luồng online thì đặt `true` trong `.env`, nhưng **không bao giờ bật ở production**. `Hủy đơn FT-… ` cũng cần bấm Xác nhận, chỉ cho đơn đang xử lý và chưa thanh toán.
 4. Tra đơn/đổi/trả cần xác minh chủ đơn: đơn đặt từ chính trình duyệt này, hoặc đúng số điện thoại đặt hàng (sai quá 5 lần thì tạm khóa theo cuộc trò chuyện và theo mã đơn).
 5. Đơn `FT-2026-1013` có cùng sản phẩm `SM-001` ở hai dòng (size M và L): agent phải hỏi khách xử lý dòng nào trước khi đề xuất đổi/trả.
 
@@ -76,8 +78,18 @@ pnpm typecheck
 pnpm test                                 # Vitest, không gọi OpenAI (graph dùng model/MCP giả)
 pnpm build
 docker compose exec web pnpm eval:rag     # golden set Week 6 qua graph, gọi OpenAI thật
-docker compose exec web pnpm eval:agent   # golden set Agent 46 case, gọi OpenAI thật, reset đơn demo
+docker compose exec web pnpm eval:agent   # golden set Agent 49 case, gọi OpenAI thật, reset đơn demo
+pnpm test:ci                              # như CI: fail nếu có test bị skip (cần TEST_DATABASE_URL)
+docker compose exec web pnpm eval:ready   # chờ worker index xong tài liệu trước khi eval
+docker compose exec web pnpm eval:agent --gate   # exit 1 nếu có hard-fail hoặc thấp hơn evals/baseline.json
 ```
+
+**Gate trước release.**
+- [quality.yml](.github/workflows/quality.yml) chạy lint, typecheck và `test:ci` với Postgres trên mọi PR. Job fail nếu có test bị skip.
+- [release-eval.yml](.github/workflows/release-eval.yml) (chạy tay hoặc khi đẩy tag `v*`) dựng Compose staging, seed dữ liệu, chạy `eval:rag --gate` và `eval:agent --gate`, rồi upload kết quả. GitHub Release chỉ được tạo khi cả hai gate xanh.
+- Cần tạo environment `staging-eval` trên GitHub, có secret `OPENAI_API_KEY`. Nên dùng key riêng có giới hạn chi phí, và thêm người duyệt cho mỗi lần chạy.
+- **Hard-fail** (chặn release dù pass rate cao): ghi dữ liệu trước khi được duyệt/xác nhận, case hỏng trong nhóm `prompt_injection`/`order_verification`/`idempotency`/`resume_from_checkpoint`, hoặc citation không hợp lệ.
+- Ngưỡng nằm ở [evals/baseline.json](evals/baseline.json) và chỉ sửa qua PR kèm file kết quả eval.
 
 Hai lệnh eval chạy trong container vì cần database `db` và MCP server. Kết quả ghi vào `data/eval-results/<timestamp>.json`; bản dùng để nộp nằm ở [evals/results/](evals/results/) (baseline Week 6, Week 6 qua graph, Agent Week 7); dùng `traceId` của từng case để tra `data/logs/web.ndjson`. Sau khi đổi model, prompt, chunking hoặc tham số retrieval phải chạy lại eval.
 
@@ -91,5 +103,24 @@ Hai lệnh eval chạy trong container vì cần database `db` và MCP server. K
 - Prompt injection cơ bản (bỏ qua hướng dẫn, xin system prompt/API key) bị chặn bằng luật trước khi gọi model.
 - Câu hỏi "sản phẩm nào sắp hết / hết hàng" được lọc theo `stock_status`.
 - Trace ở `data/logs/web.ndjson`, `worker.ndjson` và `mcp.ndjson` (xoay vòng 10 MiB × 5 file). Mỗi node graph, tool call MCP, interrupt và resume ghi một dòng có `trace_id`, latency và số bước.
+- Log không chứa dữ liệu cá nhân: không ghi nội dung tin nhắn (chỉ độ dài), không ghi tham số tool, `thread_id` được thay bằng `threadRef` (HMAC), và thông báo lỗi đi qua `safeError` (che SĐT, email, số tài khoản). Logger còn có thêm lớp `redact` của pino. Quy tắc nằm trong [src/lib/redact.ts](src/lib/redact.ts), test ở [tests/log-redaction.test.ts](tests/log-redaction.test.ts). `LOG_CHAT_TEXT=true` chỉ dùng khi debug cục bộ.
+- **Xác thực web ↔ MCP nội bộ:** đặt `INTERNAL_MCP_TOKEN` (≥ 24 ký tự ngẫu nhiên) trong `.env`. Nếu để trống, token được suy ra từ `ADMIN_SESSION_SECRET`: vẫn chạy được, nhưng MCP ghi cảnh báo `mcp.token_derived` và Admin → MCP Server hiện khuyến nghị.
+- **Xoay vòng token MCP** (không làm gián đoạn):
+  1. Chép token hiện tại sang `INTERNAL_MCP_TOKEN_PREVIOUS` và đặt `INTERNAL_MCP_TOKEN` mới.
+  2. `docker compose up -d mcp`: MCP nhận cả hai token.
+  3. `docker compose up -d web worker`: web và worker gửi token mới.
+  4. Xoá `INTERNAL_MCP_TOKEN_PREVIOUS` và `docker compose up -d mcp`.
+- **Rate limit:** mọi phản hồi 429 trả `retryAfterSeconds` và header `Retry-After`. Khung chat và các form tra đơn, đặt hàng, thanh toán, huỷ đơn khoá nút và đếm ngược. API admin đã đăng nhập bị giới hạn `ADMIN_API_RATE_LIMIT` lần/phút cho mỗi IP. Khi dùng `RATE_LIMIT_BACKEND=postgres`, bắt buộc có `RATE_LIMIT_SECRET` hoặc `ADMIN_SESSION_SECRET` (khoá HMAC của bucket).
+- **Lịch sử hội thoại theo Agent:** Admin → AI Agents → "Lịch sử hội thoại" cho đặt bật/tắt tóm tắt, ngưỡng tóm tắt và số tin nhắn giữ nguyên văn; để trống thì dùng `AGENT_SUMMARY_ENABLED`, `AGENT_SUMMARIZE_AFTER_MESSAGES`, `AGENT_KEEP_RECENT_MESSAGES`. Tool call bị gián đoạn ở lượt trước (khách đóng tab giữa chừng) được tự đóng khi gửi cho model, nên cuộc trò chuyện không bị kẹt.
+- **Circuit breaker:** OpenAI (chat, embedding), MCP nội bộ và từng MCP ngoài đều có breaker riêng. Mặc định `CIRCUIT_BREAKER_MODE=observe` chỉ theo dõi; đặt `enforce` thì sau `CIRCUIT_FAILURE_THRESHOLD` lỗi trong `CIRCUIT_WINDOW_SECONDS`, hệ thống ngừng gọi dependency đó trong `CIRCUIT_OPEN_SECONDS`, và khách thấy thông báo "tạm gián đoạn" ngay thay vì phải chờ timeout. Chỉ tool đọc được retry (1 lần, có jitter); tool ghi và `verify_order` không bao giờ retry.
+- **Monitoring và cảnh báo:**
+  - **Admin → Monitoring** hiện số liệu 24 giờ gần nhất:
+    - p95 của chat, model và từng tool/dependency;
+    - tỉ lệ lỗi, với lỗi nghiệp vụ như "không tìm thấy đơn" tách riêng, không tính là sự cố;
+    - health của MCP nội bộ, số yêu cầu chờ duyệt và chờ xác nhận, token;
+    - các cảnh báo gần đây.
+  - Worker kiểm tra mỗi `ALERT_CHECK_INTERVAL_SECONDS`: MCP down, dependency lỗi ≥ 20%, chat p95 > 15s, approval chờ > 4 giờ, job index lỗi, eval gate fail. Cảnh báo được lưu ở bảng `alert_events` (không gửi lặp trong `ALERT_DEDUPE_MINUTES`) và gửi tới `ALERT_WEBHOOK_URL` (Slack/Discord) nếu có.
+  - Prometheus/Grafana: đặt `METRICS_TOKEN` và `GRAFANA_ADMIN_PASSWORD` trong `.env`, chạy `docker compose --profile observability up -d`, rồi mở Grafana tại http://127.0.0.1:3002 (dashboard "Fashion Tomodev · AI Assistant"). `/api/metrics` cần Bearer token; label không bao giờ chứa ID hay dữ liệu khách.
+- **Khi nâng cấp từ bản trước:** log cũ có thể chứa câu hỏi chưa che. Sau khi deploy, chạy `docker compose stop web worker mcp && rm -f data/logs/*.ndjson* && docker compose up -d` (lưu ý: số liệu Admin → Monitoring sẽ bắt đầu lại từ 0).
 
 Không commit `.env`, uploads hoặc logs. Các điểm triển khai khác plan gốc được ghi ở mục 32–33 của [plan](plans/fashion-assistant-implementation-plan.md).

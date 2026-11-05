@@ -10,6 +10,7 @@ import { assertSafeUrl, guardedFetch } from '@/features/mcp/ssrf';
 import { env } from '@/lib/env';
 import { HttpError } from '@/lib/http';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 import { decryptSecret, encryptSecret } from '@/lib/secrets';
 
 // ───────────── Schemas ─────────────
@@ -269,7 +270,7 @@ export async function testServer(id: string) {
     return { ok: true as const, tools };
   } catch (error) {
     const message = connectionError(error);
-    logger.warn({ stage: 'mcp.test_failed', serverId: id, error: error instanceof Error ? error.message : String(error) });
+    logger.warn({ stage: 'mcp.test_failed', serverId: id, error: safeError(error) });
     await sql`UPDATE mcp_servers SET last_status = 'error', last_error = ${message}, last_checked_at = now(), updated_at = now() WHERE id = ${id}`;
     return { ok: false as const, message };
   }

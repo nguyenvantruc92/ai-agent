@@ -72,6 +72,7 @@ function Shell({ pendingApprovals, processingOrders, sync, children }: { pending
     { title: 'AI', items: [
       { href: '/admin/agents', label: 'AI Agents', icon: <SparkleIcon /> },
       { href: '/admin/knowledge', label: 'Knowledge', icon: <DatabaseIcon /> },
+      { href: '/admin/monitoring', label: 'Monitoring', icon: <LayoutGridIcon /> },
       { href: '/admin/mcp-servers', label: 'MCP Server', icon: <PlugIcon /> },
       { href: '/admin/approvals', label: 'Phê duyệt', icon: <TaskIcon />, badge: pendingApprovals },
     ] },

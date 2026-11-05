@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { ChatPanel } from '@/components/shop/chat-panel';
 
 export const OPEN_CHAT_EVENT = 'tomodev:open-chat';
@@ -71,6 +71,9 @@ export function ChatWidget() {
 }
 
 /** Any button/link that should open the widget (server components can render it). */
-export function OpenChatButton({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <button type="button" className={className} onClick={() => window.dispatchEvent(new Event(OPEN_CHAT_EVENT))}>{children}</button>;
+export function OpenChatButton({ className, children, onClick, ...props }: ComponentProps<'button'>) {
+  return <button type="button" className={className} {...props} onClick={(event) => {
+    onClick?.(event);
+    if (!event.defaultPrevented) window.dispatchEvent(new Event(OPEN_CHAT_EVENT));
+  }}>{children}</button>;
 }

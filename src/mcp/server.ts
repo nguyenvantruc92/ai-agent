@@ -1,5 +1,4 @@
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
@@ -10,25 +9,13 @@ import { returnReasons } from '@/features/orders/types';
 import { searchScopeForThread } from '@/features/knowledge/scopes';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
+import { handler } from '@/mcp/handler';
+import { acceptedMcpTokens, hasInternalMcpAccess, internalMcpToken, internalMcpTokenSource } from '@/mcp/internal-auth';
 
-type Extra = { _meta?: Record<string, unknown> };
-
-/** Wraps a handler with JSON output and a trace line per call. */
-function handler<A>(name: string, run: (args: A, traceId: string) => Promise<unknown>) {
-  return async (args: A, extra: Extra) => {
-    const traceId = typeof extra._meta?.traceId === 'string' ? extra._meta.traceId : randomUUID();
-    const startedAt = Date.now();
-    try {
-      const result = await run(args, traceId);
-      logger.info({ trace_id: traceId, stage: 'mcp.tool', tool: name, args, latencyMs: Date.now() - startedAt });
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error({ trace_id: traceId, stage: 'mcp.tool_failed', tool: name, args, error: message, latencyMs: Date.now() - startedAt });
-      return { isError: true, content: [{ type: 'text' as const, text: message }] };
-    }
-  };
-}
+const mcpToken = internalMcpToken();
+const acceptedTokens = acceptedMcpTokens();
+if (!mcpToken) throw new Error('INTERNAL_MCP_TOKEN or ADMIN_SESSION_SECRET must be configured before starting the built-in MCP server.');
 
 const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -109,8 +96,17 @@ function buildServer() {
 
 // Stateless Streamable HTTP: a fresh server/transport per request, reachable only inside the Docker network.
 createServer(async (request, response) => {
+  if (request.url === '/health' && request.method === 'GET') {
+    response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end('{"status":"ok"}');
+    return;
+  }
   if (request.url !== '/mcp') { response.writeHead(404).end(); return; }
   if (request.method !== 'POST') { response.writeHead(405).end(); return; }
+  if (!hasInternalMcpAccess(request.headers.authorization, acceptedTokens)) {
+    // Do not create an MCP server/transport, nor log request input, before authentication.
+    response.writeHead(401, { 'www-authenticate': 'Bearer' }).end();
+    return;
+  }
   const server = buildServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   response.on('close', () => { void transport.close(); void server.close(); });
@@ -118,7 +114,11 @@ createServer(async (request, response) => {
     await server.connect(transport);
     await transport.handleRequest(request, response);
   } catch (error) {
-    logger.error({ stage: 'mcp.request_failed', error: error instanceof Error ? error.message : String(error) });
+    logger.error({ stage: 'mcp.request_failed', error: safeError(error) });
     if (!response.headersSent) response.writeHead(500).end();
   }
-}).listen(env.MCP_PORT, '0.0.0.0', () => logger.info({ stage: 'mcp.started', port: env.MCP_PORT }));
+}).listen(env.MCP_PORT, '0.0.0.0', () => {
+  logger.info({ stage: 'mcp.started', port: env.MCP_PORT, tokenSource: internalMcpTokenSource(), rotating: acceptedTokens.length > 1 });
+  // Still works, but the token then changes whenever ADMIN_SESSION_SECRET does: set a dedicated INTERNAL_MCP_TOKEN.
+  if (internalMcpTokenSource() === 'derived') logger.warn({ stage: 'mcp.token_derived', hint: 'Set INTERNAL_MCP_TOKEN in .env (see README).' });
+});

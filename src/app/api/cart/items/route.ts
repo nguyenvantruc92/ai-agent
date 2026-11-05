@@ -7,7 +7,7 @@ import { guardWrite, withVisitor } from '@/lib/shop-api';
 /** Body: { variantId, quantity? } — adds to the cart and returns it. */
 export async function POST(request: Request) {
   try {
-    guardWrite(request, 'cart');
+    await guardWrite(request, 'cart');
     const session = await visitorSession();
     await addToCart(session.visitorId, addToCartInput.parse(await request.json()));
     return withVisitor(session, await getCart(session.visitorId), { status: 201 });

@@ -7,7 +7,8 @@ import { resetAgentRuntime } from '@/features/agent/runtime';
 import { pendingConfirmationForThread } from '@/features/agent/confirmations';
 import { decideAndResume, decideAndResumeConfirmation, runChatTurn, type TurnResult } from '@/features/agent/session';
 import { resetSeedOrders } from '@/features/orders/repository';
-import { env } from '@/lib/env';
+import { gateAgent, printGate } from '@/scripts/eval-gate';
+import { evalRunMetadata, gateRequested, loadBaseline } from '@/scripts/eval-meta';
 
 type Step = { user: string } | { decision: 'approved' | 'rejected' | 'expired'; note?: string } | { confirm: 'confirmed' | 'cancelled' } | { restart: true };
 type Expect = {
@@ -145,10 +146,10 @@ async function main() {
   await resetSeedOrders();
 
   const latencies = results.map((item) => item.latencyMs).sort((a, b) => a - b);
+  const meta = await evalRunMetadata();
   const summary = {
     goldenSet: 'agent-golden-set.v1',
-    model: env.OPENAI_CHAT_MODEL,
-    limits: { maxSteps: env.AGENT_MAX_STEPS, maxToolCalls: env.AGENT_MAX_TOOL_CALLS },
+    ...meta,
     cases: results.length,
     passed: results.filter((item) => item.passed).length,
     errors: results.filter((item) => item.error).length,
@@ -163,13 +164,17 @@ async function main() {
   const outputDir = join(process.cwd(), 'data', 'eval-results');
   await mkdir(outputDir, { recursive: true });
   const destination = join(outputDir, `agent-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  await writeFile(destination, JSON.stringify({ ...summary, results }, null, 2));
+  const gate = gateAgent(summary, results, (await loadBaseline()).agent);
+  await writeFile(destination, JSON.stringify({ ...summary, gate, results }, null, 2));
   console.log(JSON.stringify({ ...summary, destination }, null, 2));
   for (const item of results.filter((result) => !result.passed)) {
     console.log(`\n[${item.id}] ${item.error ?? item.failures.join('; ')}\n  kind=${item.finalKind} tools=${item.tools.join(' → ')}\n  answer=${item.answer.slice(0, 220)}`);
   }
+  printGate('Agent', gate);
   await resetAgentRuntime();
   await sql.end();
+  // Only `--gate` turns a failed gate into a failing exit code (CI/release); a plain run just reports it.
+  if (gateRequested() && !gate.passed) process.exitCode = 1;
 }
 
-void main();
+main().catch((error) => { console.error(error); process.exit(1); });

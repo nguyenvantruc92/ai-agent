@@ -22,7 +22,7 @@ export const openAiAgentModel: AgentModel = {
       apiKey,
       model: agent.model,
       temperature: agent.temperature,
-      maxTokens: env.OPENAI_MAX_OUTPUT_TOKENS,
+      maxTokens: agent.maxTokens,
       timeout: env.OPENAI_TIMEOUT_MS,
       maxRetries: env.OPENAI_MAX_RETRIES,
       useResponsesApi: true,

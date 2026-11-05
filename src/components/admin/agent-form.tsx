@@ -14,11 +14,15 @@ import { Switch } from '@/components/admin-ui/switch';
 import { Textarea } from '@/components/admin-ui/textarea';
 import { callApi } from '@/lib/client-api';
 import { slugify } from '@/lib/slug';
+import type { ModelOption } from '@/features/ai/models';
 
 export type AgentFormValues = {
-  id?: string; name: string; slug: string; description: string; instructions: string; model: string; temperature: number; maxSteps: number; maxToolCalls: number;
+  id?: string; name: string; slug: string; instructions: string; model: string; temperature: number; maxTokens: number; maxSteps: number; maxToolCalls: number;
+  /** null = follow the system default. */
+  summaryEnabled: boolean | null; summarizeAfterMessages: number | null; keepRecentMessages: number | null;
   isActive: boolean; isDefault: boolean; scopeIds: string[]; mcpServerIds: string[]; threadCount: number;
 };
+export type HistoryDefaults = { summaryEnabled: boolean; summarizeAfterMessages: number; keepRecentMessages: number };
 export type ScopeOption = { id: string; name: string; toolName: string; description: string };
 /** An MCP server an agent can use: all its ticked tools come with it. */
 export type ServerOption = { id: string; name: string; slug: string; isBuiltin: boolean; enabled: boolean; tools: { name: string; requiresApproval: boolean }[] };
@@ -26,7 +30,7 @@ export type ServerOption = { id: string; name: string; slug: string; isBuiltin: 
 const toggle = <T,>(list: T[], item: T) => list.includes(item) ? list.filter((value) => value !== item) : [...list, item];
 
 /** Create or edit an agent: instructions, model and limits, knowledge scopes, built-in tools (rules fixed in code) and external MCP tools. */
-export function AgentForm({ initial, models, scopes, servers }: { initial: AgentFormValues; models: string[]; scopes: ScopeOption[]; servers: ServerOption[] }) {
+export function AgentForm({ initial, models, scopes, servers, historyDefaults }: { initial: AgentFormValues; models: ModelOption[]; scopes: ScopeOption[]; servers: ServerOption[]; historyDefaults: HistoryDefaults }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
@@ -34,14 +38,14 @@ export function AgentForm({ initial, models, scopes, servers }: { initial: Agent
   const [slugEdited, setSlugEdited] = useState(Boolean(initial.id));
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof AgentFormValues>(key: K, value: AgentFormValues[K]) => setValues((current) => ({ ...current, [key]: value }));
-  const modelOptions = models.includes(values.model) ? models : [values.model, ...models];
+  const modelOptions = models.some((model) => model.id === values.model) ? models : [{ id: values.model, label: values.model }, ...models];
 
   async function save(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     const payload = {
-      name: values.name, slug: values.slug, description: values.description, instructions: values.instructions, model: values.model, temperature: Number(values.temperature),
-      maxSteps: Number(values.maxSteps), maxToolCalls: Number(values.maxToolCalls), isActive: values.isActive, scopeIds: values.scopeIds, mcpServerIds: values.mcpServerIds,
+      name: values.name, slug: values.slug, instructions: values.instructions, model: values.model, temperature: Number(values.temperature), maxTokens: Number(values.maxTokens),
+      maxSteps: Number(values.maxSteps), maxToolCalls: Number(values.maxToolCalls), summaryEnabled: values.summaryEnabled, summarizeAfterMessages: values.summarizeAfterMessages, keepRecentMessages: values.keepRecentMessages, isActive: values.isActive, scopeIds: values.scopeIds, mcpServerIds: values.mcpServerIds,
     };
     const result = values.id
       ? await callApi(`/api/admin/agents/${values.id}`, { method: 'PUT', json: payload })
@@ -86,15 +90,33 @@ export function AgentForm({ initial, models, scopes, servers }: { initial: Agent
           <FormField label="Tên Agent"><Input required minLength={2} maxLength={80} value={values.name} placeholder="Trợ lý tư vấn"
             onChange={(event) => { set('name', event.target.value); if (!slugEdited) set('slug', slugify(event.target.value)); }} /></FormField>
           <FormField label="Mã (slug)" hint="Chữ thường, số, dấu gạch ngang."><Input required maxLength={49} className="font-mono" value={values.slug} onChange={(event) => { set('slug', event.target.value); setSlugEdited(true); }} /></FormField>
-          <FormField className="lg:col-span-2" label="Mô tả (tuỳ chọn)"><Input maxLength={300} value={values.description} onChange={(event) => set('description', event.target.value)} /></FormField>
-          <FormField label="Model"><NativeSelect value={values.model} onChange={(event) => set('model', event.target.value)}>{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}</NativeSelect></FormField>
+          <FormField label="Model"><NativeSelect value={values.model} onChange={(event) => set('model', event.target.value)}>{modelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}</NativeSelect></FormField>
           <FormField label="Temperature" hint="0 = ổn định, 2 = sáng tạo. Nên để thấp (0–0.5) cho tư vấn bán hàng."><Input type="number" step="0.1" min={0} max={2} value={values.temperature} onChange={(event) => set('temperature', Number(event.target.value))} /></FormField>
+          <FormField label="Max Tokens" hint="Số token tối đa trong mỗi câu trả lời."><Input type="number" min={1} max={32768} value={values.maxTokens} onChange={(event) => set('maxTokens', Number(event.target.value))} /></FormField>
           <FormField label="Số lần gọi model tối đa mỗi lượt" hint="Giới hạn vòng lặp để không chạy vô hạn."><Input type="number" min={1} max={20} value={values.maxSteps} onChange={(event) => set('maxSteps', Number(event.target.value))} /></FormField>
           <FormField label="Số tool call tối đa mỗi lượt"><Input type="number" min={1} max={20} value={values.maxToolCalls} onChange={(event) => set('maxToolCalls', Number(event.target.value))} /></FormField>
           <label className="flex items-center gap-3 lg:col-span-2">
             <Switch checked={values.isActive} disabled={values.isDefault} onCheckedChange={(checked) => set('isActive', checked)} aria-label="Đang bật" />
             <span className="text-sm text-gray-700 dark:text-gray-300">Đang bật{values.isDefault && <span className="ml-2 text-theme-xs text-gray-500">Agent mặc định luôn bật.</span>}</span>
           </label>
+        </div>
+      </Panel>
+
+      <Panel title="Lịch sử hội thoại">
+        <div className="grid gap-5 px-5 pb-5 sm:px-6 lg:grid-cols-3">
+          <FormField label="Tóm tắt hội thoại dài" hint="Gộp phần cũ thành một đoạn ngắn đã che dữ liệu cá nhân. Không bao giờ dùng làm giá, tồn kho hay trạng thái đơn.">
+            <NativeSelect value={values.summaryEnabled === null ? '' : String(values.summaryEnabled)} onChange={(event) => set('summaryEnabled', event.target.value === '' ? null : event.target.value === 'true')}>
+              <option value="">Theo hệ thống ({historyDefaults.summaryEnabled ? 'bật' : 'tắt'})</option>
+              <option value="true">Bật</option>
+              <option value="false">Tắt</option>
+            </NativeSelect>
+          </FormField>
+          <FormField label="Tóm tắt khi vượt (tin nhắn)" hint={`Để trống = theo hệ thống (${historyDefaults.summarizeAfterMessages}). Từ 8 đến 200.`}>
+            <Input type="number" min={8} max={200} value={values.summarizeAfterMessages ?? ''} placeholder={String(historyDefaults.summarizeAfterMessages)} onChange={(event) => set('summarizeAfterMessages', event.target.value === '' ? null : Number(event.target.value))} />
+          </FormField>
+          <FormField label="Giữ nguyên văn (tin nhắn gần nhất)" hint={`Để trống = theo hệ thống (${historyDefaults.keepRecentMessages}). Nhiều hơn: hiểu ngữ cảnh tốt hơn nhưng tốn token hơn mỗi lượt.`}>
+            <Input type="number" min={4} max={100} value={values.keepRecentMessages ?? ''} placeholder={String(historyDefaults.keepRecentMessages)} onChange={(event) => set('keepRecentMessages', event.target.value === '' ? null : Number(event.target.value))} />
+          </FormField>
         </div>
       </Panel>
 

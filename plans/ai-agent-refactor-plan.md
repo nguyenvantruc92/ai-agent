@@ -217,7 +217,7 @@ Mỗi phase kết thúc bằng một lần kiểm tra thủ công qua UI và ch�
 
 ### Việc còn lại
 - **Phase 0**: cần OpenAI key để chạy baseline và `eval:rag`/`eval:agent` (chưa có key nên chưa chạy; toàn bộ test dưới đây dùng fake/mock embedding).
-- **Phase 5**: dọn dẹp code chết (`chat/rag-answer.ts` ngoài các type, `chat/prompt.ts`, `rag/query.ts`, nhánh product/stock trong `retrieve`, `prompts/fashion-tomodev-rag-system.md`), chạy `eval:rag`/`eval:agent` và so với baseline, README.
+- **Phase 5**: ~~dọn dẹp code chết~~ (đã xóa `chat/rag-answer.ts`, `chat/prompt.ts`, `rag/query.ts`, `sourceTitles`, `prompts/fashion-tomodev-rag-system.md`; type `FinalAnswer`/`SourceRef`/`PreviousSource` chuyển sang `chat/answer.ts`). **Lệch plan:** nhánh product/stock/category trong `retrieve` được giữ vì tab Tài liệu → Thử truy xuất (không scope) vẫn dùng; danh mục giờ đọc từ bảng `categories` (`catalog/category-names.ts`, cache 60s, xóa cache khi sửa danh mục/import) và so khớp không dấu. Còn lại: chạy `eval:rag`/`eval:agent` và so với baseline, README.
 
 ### Kiểm tra đã chạy
 - `tsc`, `eslint` sạch; 259 test (unit + Postgres) xanh, gồm: seed idempotent, scope CRUD/ràng buộc, retrieval chỉ trong scope, ủy quyền `search_knowledge`, hybrid search, 37 case SSRF, round-trip MCP thật có Bearer/header/redirect/lỗi kết nối, secret không lộ.

@@ -6,6 +6,7 @@ import { getConfirmation } from '@/features/agent/confirmations';
 import { ConfirmationConflictError, recordConfirmationDecision, resumeConfirmation } from '@/features/agent/session';
 import { ownedThread, visitorSession } from '@/features/chat/visitor';
 import { env } from '@/lib/env';
+import { tooManyRequests } from '@/lib/http';
 import { logger } from '@/lib/logger';
 import { takeRateLimit } from '@/lib/rate-limit';
 
@@ -29,8 +30,8 @@ export async function POST(request: Request, { params }: Context) {
   const threadId = confirmation ? await ownedThread(confirmation.thread_id, visitor.visitorId) : undefined;
   if (!confirmation || !threadId) return visitor.persist(NextResponse.json({ error: 'Không tìm thấy thao tác cần xác nhận.', traceId }, { status: 404 }));
 
-  const limit = takeRateLimit(`confirm:${visitor.visitorId}`, env.CHAT_RATE_LIMIT, env.CHAT_RATE_WINDOW_SECONDS);
-  if (!limit.allowed) return visitor.persist(NextResponse.json({ error: 'Bạn thao tác quá nhanh. Vui lòng thử lại sau.', traceId }, { status: 429 }));
+  const limit = await takeRateLimit(`confirm:${visitor.visitorId}`, env.CHAT_RATE_LIMIT, env.CHAT_RATE_WINDOW_SECONDS);
+  if (!limit.allowed) return visitor.persist(tooManyRequests({ error: 'Bạn thao tác quá nhanh.', traceId }, limit.retryAfterSeconds));
 
   logger.info({ trace_id: traceId, stage: 'chat.confirmation', confirmationId: confirmation.id, decision: parsed.data.decision });
   let prepared;

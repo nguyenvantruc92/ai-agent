@@ -5,20 +5,15 @@ import { turnStream } from '@/app/api/chat/stream';
 import { runChatTurn } from '@/features/agent/session';
 import { adminCookie, isAdminSession } from '@/features/auth/session';
 import { chatRequestSchema } from '@/features/chat/schema';
+import { chatReceivedLog } from '@/features/chat/trace';
 import { getOrCreateThread, visitorSession } from '@/features/chat/visitor';
 import { env } from '@/lib/env';
+import { tooManyRequests } from '@/lib/http';
 import { logger } from '@/lib/logger';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
+import { safeError } from '@/lib/redact';
 
 export const runtime = 'nodejs';
-
-const encoder = new TextEncoder();
-
-function redactForTrace(value: string) {
-  return value
-    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[email]')
-    .replace(/\b\d{9,}\b/g, '[number]');
-}
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
@@ -31,16 +26,18 @@ export async function POST(request: Request) {
   if (body.agentId && !isAdminSession((await cookies()).get(adminCookie)?.value)) return NextResponse.json({ error: 'Không được phép chọn Agent.', traceId }, { status: 403 });
 
   const visitor = await visitorSession();
-  const limit = takeRateLimit(`chat:${visitor.visitorId}:${clientIp(request)}`, env.CHAT_RATE_LIMIT, env.CHAT_RATE_WINDOW_SECONDS);
-  if (!limit.allowed) return visitor.persist(NextResponse.json({ error: 'Bạn đã gửi quá nhiều tin nhắn. Vui lòng thử lại sau.', retryAfterSeconds: limit.retryAfterSeconds, traceId }, { status: 429 }));
+  const limit = await takeRateLimit(`chat:${visitor.visitorId}:${clientIp(request)}`, env.CHAT_RATE_LIMIT, env.CHAT_RATE_WINDOW_SECONDS);
+  if (!limit.allowed) return visitor.persist(tooManyRequests({ error: 'Bạn đã gửi quá nhiều tin nhắn.', traceId }, limit.retryAfterSeconds));
 
   let threadId: string;
   try { threadId = await getOrCreateThread(body.threadId, visitor.visitorId, body.agentId); }
   catch (error) {
-    logger.error({ trace_id: traceId, stage: 'chat.setup_failed', error: error instanceof Error ? error.message : String(error) });
+    logger.error({ trace_id: traceId, stage: 'chat.setup_failed', error: safeError(error) });
     return visitor.persist(NextResponse.json({ error: 'Không thể bắt đầu chat.', traceId }, { status: 500 }));
   }
-  logger.info({ trace_id: traceId, stage: 'chat.received', threadId, question: redactForTrace(body.message) });
+  // Only the message length and a thread pseudonym are logged (see chatReceivedLog).
+  const received = chatReceivedLog(traceId, threadId, body.message);
+  logger.info(received);
 
   return turnStream({
     request, visitor, traceId, threadId, startedAt, debug: Boolean(body.agentId),

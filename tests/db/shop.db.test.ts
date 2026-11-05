@@ -228,6 +228,31 @@ describe.skipIf(!url)('cart, checkout and customer orders (Postgres)', () => {
       await expect(orders.payCustomerOrder(cod.code, { visitorId: cod.visitor }, 'success')).rejects.toMatchObject({ status: 409 });
     });
 
+    it('with the payment simulation off: online checkout is refused, pay is 404 and audited, a replay still works', async () => {
+      const { env } = await import('@/lib/env');
+      const { code, visitor } = await place('card');
+      const replayKey = randomUUID();
+      const p = await product(`R-${Math.floor(Math.random() * 1e6)}`);
+      const [variant] = await variantsOf(p.id);
+      const buyer = randomUUID();
+      await buy(buyer, [variant.id, 1]);
+      const first = await checkoutMod.checkout(buyer, info({ paymentMethod: 'card', idempotencyKey: replayKey }));
+      env.PAYMENT_SIMULATION_ENABLED = false;
+      try {
+        expect(await orders.getCustomerOrder(code, { visitorId: visitor })).toMatchObject({ canPay: false, canCancel: true });
+        await expect(orders.payCustomerOrder(code, { visitorId: visitor }, 'success')).rejects.toMatchObject({ status: 404 });
+        expect((await orders.getCustomerOrder(code, { visitorId: visitor })).paymentStatus).toBe('unpaid');
+        expect(await sql`SELECT 1 FROM audit_logs WHERE action = 'payment.simulation_blocked' AND entity_id = ${code}`).toHaveLength(1);
+        expect((await checkoutMod.checkout(buyer, info({ paymentMethod: 'card', idempotencyKey: replayKey }))).code).toBe(first.code);
+        const other = randomUUID();
+        await buy(other, [variant.id, 1]);
+        await expect(checkoutMod.checkout(other, info({ paymentMethod: 'bank_transfer' }))).rejects.toMatchObject({ status: 409 });
+        expect((await checkoutMod.checkout(other, info({ paymentMethod: 'COD' }))).code).toBeTruthy();
+      } finally {
+        env.PAYMENT_SIMULATION_ENABLED = true;
+      }
+    });
+
     it('only shows an order to its owner or to someone who knows the phone, with one shared error', async () => {
       const { code, visitor } = await place();
       expect((await orders.getCustomerOrder(code, { visitorId: visitor })).code).toBe(code);

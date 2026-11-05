@@ -4,6 +4,9 @@ import { callExternalTool, type ExternalResult } from '@/features/mcp/external';
 import type { AgentCart, AgentProductHit } from '@/features/agent/shop-types';
 import type { Order, Product, RequestProposal } from '@/features/orders/types';
 import { env } from '@/lib/env';
+import { breakerFor, withRetry } from '@/lib/resilience';
+import { ToolReportedError, trackDependency } from '@/lib/telemetry';
+import { internalMcpToken } from '@/mcp/internal-auth';
 
 export type KnowledgeHit = { source_id: string; title: string; content: string; similarity: number; updated_at: string };
 export type CreatedRequest = { requestId: string; status: string; created: boolean; createdAt: string | null };
@@ -32,13 +35,36 @@ export type ToolGateway = {
   cancelOrder(threadId: string, confirmationId: string, traceId: string): Promise<ConfirmedResult>;
 };
 
-async function callTool<T>(name: string, args: Record<string, unknown>, traceId: string): Promise<T> {
+/**
+ * Read tools that are safe to call twice. `verify_order` is excluded: a wrong phone counts towards the lookup limit, so
+ * a retry after a timeout could count one attempt twice. Writes (cart, checkout, cancel, requests) are never retried.
+ */
+const retryableTools = new Set(['lookup_product', 'lookup_order', 'search_products', 'search_knowledge', 'view_cart']);
+
+/**
+ * Every built-in tool call goes through the `mcp:builtin` breaker, is timed and classified (ok / tool_error / failed /
+ * timeout) for Monitoring, and read tools get one retry with jitter on an outage.
+ */
+export function guardedToolCall<T>(name: string, traceId: string, run: () => Promise<T>): Promise<T> {
+  return breakerFor('mcp:builtin').run(() => {
+    const once = () => trackDependency('mcp_builtin', name, traceId, run);
+    return retryableTools.has(name) ? withRetry(once, { attempts: 2, baseMs: 200, maxMs: 1_000 }) : once();
+  });
+}
+
+const callTool = <T>(name: string, args: Record<string, unknown>, traceId: string) => guardedToolCall(name, traceId, () => callBuiltinTool<T>(name, args, traceId));
+
+async function callBuiltinTool<T>(name: string, args: Record<string, unknown>, traceId: string): Promise<T> {
+  const mcpToken = internalMcpToken();
+  if (!mcpToken) throw new Error('INTERNAL_MCP_TOKEN or ADMIN_SESSION_SECRET is required to call the built-in MCP server.');
   const client = new Client({ name: 'fashion-tomodev-agent', version: '1.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(env.MCP_URL)));
+  await client.connect(new StreamableHTTPClientTransport(new URL(env.MCP_URL), {
+    requestInit: { headers: { authorization: `Bearer ${mcpToken}` } },
+  }));
   try {
     const result = await client.callTool({ name, arguments: args, _meta: { traceId } });
     const text = (result.content as { type: string; text?: string }[]).find((part) => part.type === 'text')?.text ?? 'null';
-    if (result.isError) throw new Error(`MCP ${name}: ${text}`);
+    if (result.isError) throw new ToolReportedError(`MCP ${name}: ${text}`);
     return JSON.parse(text) as T;
   } finally {
     await client.close();

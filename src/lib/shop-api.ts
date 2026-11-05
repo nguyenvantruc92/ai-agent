@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { visitorSession } from '@/features/chat/visitor';
-import { HttpError } from '@/lib/http';
+import { HttpError, rateLimitError } from '@/lib/http';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 
 type Session = Awaited<ReturnType<typeof visitorSession>>;
@@ -9,12 +9,12 @@ type Session = Awaited<ReturnType<typeof visitorSession>>;
  * Shared checks for the customer-facing write endpoints: JSON bodies only (a cross-site <form> cannot send
  * them), plus a per-IP write limit. Reads and DELETEs skip the content-type check.
  */
-export function guardWrite(request: Request, scope: string, limit = 60, windowSeconds = 60) {
+export async function guardWrite(request: Request, scope: string, limit = 60, windowSeconds = 60) {
   if (['POST', 'PATCH', 'PUT'].includes(request.method) && !(request.headers.get('content-type') ?? '').includes('application/json')) {
     throw new HttpError('Yêu cầu không hợp lệ.', 415);
   }
-  const taken = takeRateLimit(`shop:${scope}:${clientIp(request)}`, limit, windowSeconds);
-  if (!taken.allowed) throw new HttpError('Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút.', 429);
+  const taken = await takeRateLimit(`shop:${scope}:${clientIp(request)}`, limit, windowSeconds);
+  if (!taken.allowed) throw rateLimitError('Bạn thao tác quá nhanh.', taken.retryAfterSeconds);
 }
 
 /** JSON response that also sets the visitor cookie when this browser did not have one yet. */

@@ -5,6 +5,8 @@ import { sql } from '@/db/client';
 import { resetAgentRuntime } from '@/features/agent/runtime';
 import { runChatTurn } from '@/features/agent/session';
 import { env } from '@/lib/env';
+import { gateRag, printGate } from '@/scripts/eval-gate';
+import { evalRunMetadata, gateRequested, loadBaseline } from '@/scripts/eval-meta';
 
 type Case = { id: string; messages: string[]; expectedSourceIds: string[]; expectedKeywords: string[]; insufficientInformation: boolean };
 
@@ -68,9 +70,10 @@ async function main() {
 
   const answered = results.filter((item) => !item.error);
   const latencies = answered.map((item) => item.latencyMs).sort((a, b) => a - b);
+  const meta = await evalRunMetadata();
   const summary = {
     goldenSet: 'golden-set.v1',
-    model: env.OPENAI_CHAT_MODEL,
+    ...meta,
     embeddingModel: env.OPENAI_EMBEDDING_MODEL,
     retrieval: { topK: env.RETRIEVAL_TOP_K, minSimilarity: env.RETRIEVAL_MIN_SIMILARITY, maxContextChunks: env.MAX_CONTEXT_CHUNKS, maxContextTokens: env.MAX_CONTEXT_TOKENS },
     cases: results.length,
@@ -87,13 +90,16 @@ async function main() {
   const outputDir = join(process.cwd(), 'data', 'eval-results');
   await mkdir(outputDir, { recursive: true });
   const destination = join(outputDir, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  await writeFile(destination, JSON.stringify({ ...summary, results }, null, 2));
+  const gate = gateRag(summary, (await loadBaseline()).rag);
+  await writeFile(destination, JSON.stringify({ ...summary, gate, results }, null, 2));
   console.log(JSON.stringify({ ...summary, destination }, null, 2));
   for (const item of results.filter((result) => !result.passed)) {
     console.log(`\n[${item.id}] route=${item.route} validation=${item.validation} recall=${item.recallAt5} coverage=${item.citationCoverage} insufficientOk=${item.insufficientCorrect} missing=${JSON.stringify(item.missingKeywords)}\n  prompt=${item.promptSourceIds.join(', ')}\n  cited=${item.citedSourceIds.join(', ')}\n  answer=${item.answer.slice(0, 200)}`);
   }
+  printGate('RAG', gate);
   await resetAgentRuntime();
   await sql.end();
+  if (gateRequested() && !gate.passed) process.exitCode = 1;
 }
 
-void main();
+main().catch((error) => { console.error(error); process.exit(1); });

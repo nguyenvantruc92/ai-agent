@@ -10,7 +10,7 @@ type Context = { params: Promise<{ code: string }> };
 /** Simulated payment gateway callback. Body: { outcome: 'success' | 'failure', phone? }. */
 export async function POST(request: Request, { params }: Context) {
   try {
-    guardWrite(request, 'order-action', 20, 60);
+    await guardWrite(request, 'order-action', 20, 60);
     const session = await visitorSession();
     const { outcome, phone } = payInput.parse(await request.json());
     return NextResponse.json(await payCustomerOrder((await params).code, { visitorId: session.isNew ? undefined : session.visitorId, phone }, outcome));

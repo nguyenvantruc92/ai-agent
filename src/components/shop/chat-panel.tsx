@@ -4,6 +4,8 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } fr
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChatProductCards } from '@/components/shop/chat-product-cards';
+import { useCooldown } from '@/components/shop/use-cooldown';
+import { retryAfterOf } from '@/lib/shop-client';
 import type { StoreCard } from '@/features/catalog/queries';
 
 type Source = { id: string; title: string; type: string };
@@ -52,6 +54,8 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
   const [message, setMessage] = useState('');
   const [threadId, setThreadId] = useState<string>();
   const [pending, setPending] = useState(false);
+  // After a 429 the send button stays locked and counts down; the server refuses until the window ends anyway.
+  const cooldown = useCooldown();
   const [approval, setApproval] = useState<Pending>(null);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const router = useRouter();
@@ -101,6 +105,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       if (!response.ok || !response.body) {
         const data = await response.json().catch(() => ({})) as { error?: string; traceId?: string };
         updateLast({ answer: data.error ?? 'Không thể kết nối chat.', checking: false, traceId: data.traceId });
+        cooldown.start(retryAfterOf(response, data));
         if (threadId) void loadThread(threadId); // a conflict usually means the buttons are stale
         return;
       }
@@ -124,7 +129,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
             const asked = data.pendingConfirmation as Confirmation;
             updateLast({
               answer: data.answer as string, sources: data.sources as Source[], products: (data.products as StoreCard[] | undefined) ?? [], insufficient: data.insufficientInformation as boolean, traceId: data.traceId as string, checking: false, status: undefined,
-              kind: data.pendingApproval ? 'approval_pending' : asked ? 'confirmation_pending' : undefined, confirmationId: asked?.id,
+              kind: data.pendingApproval ? 'approval_pending' : asked ? 'confirmation_pending' : data.unavailable ? 'unavailable' : undefined, confirmationId: asked?.id,
             });
             if (data.pendingApproval) setApproval(data.pendingApproval as Pending);
             setConfirmation(asked ?? null);
@@ -141,7 +146,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
   }
 
   async function send(question: string) {
-    if (!question || pending || approval || confirmation) return;
+    if (!question || pending || approval || confirmation || cooldown.active) return;
     setMessage('');
     setMessages((current) => [...current, { role: 'user', answer: question }, { role: 'assistant', answer: '', checking: true }]);
     await stream((signal) => fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId, message: question }), signal }));
@@ -164,7 +169,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(message.trim()); }
   }
 
-  const locked = pending || Boolean(approval) || Boolean(confirmation);
+  const locked = pending || Boolean(approval) || Boolean(confirmation) || cooldown.active;
   return (
     <>
       <header className="flex items-center gap-3 bg-gradient-to-r from-brand to-accent px-4 py-3 text-white">
@@ -193,7 +198,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
         )}
         {messages.map((item, index) => (
           <div key={index} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <article className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm ${item.role === 'user' ? 'rounded-br-sm bg-gradient-to-br from-brand to-[#9333ea] text-white' : item.kind === 'approval_pending' ? 'rounded-tl-sm border border-amber-300 bg-amber-50 text-ink' : item.kind === 'confirmation_pending' ? 'w-full rounded-tl-sm border-2 border-brand/30 bg-white text-ink shadow-sm' : 'rounded-tl-sm bg-white text-ink shadow-sm ring-1 ring-line'}`}>
+            <article className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm ${item.role === 'user' ? 'rounded-br-sm bg-gradient-to-br from-brand to-[#9333ea] text-white' : item.kind === 'approval_pending' || item.kind === 'unavailable' ? 'rounded-tl-sm border border-amber-300 bg-amber-50 text-ink' : item.kind === 'confirmation_pending' ? 'w-full rounded-tl-sm border-2 border-brand/30 bg-white text-ink shadow-sm' : 'rounded-tl-sm bg-white text-ink shadow-sm ring-1 ring-line'}`}>
               {item.kind === 'confirmation_pending' ? <ConfirmationCard text={item.answer} /> : <p className="leading-6 whitespace-pre-wrap">{item.role === 'assistant' && item.answer ? <Linkified text={item.answer} /> : item.answer || item.status || 'Đang trả lời…'}</p>}
               {item.kind === 'confirmation_pending' && confirmation && item.confirmationId === confirmation.id && (
                 <div className="mt-3 flex gap-2">
@@ -218,13 +223,14 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
 
       <form onSubmit={submit} className="border-t border-line bg-white p-3">
         <div className="flex items-end gap-2">
-          <textarea ref={input} rows={1} maxLength={2000} value={message} disabled={Boolean(approval) || Boolean(confirmation)} onChange={(e) => setMessage(e.target.value)} onKeyDown={onKeyDown} aria-label="Tin nhắn" placeholder={approval ? 'Đang chờ nhân viên duyệt…' : confirmation ? 'Hãy bấm Xác nhận hoặc Huỷ ở trên…' : 'Nhập câu hỏi của bạn…'} className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-line bg-sand/50 px-3 py-2 text-sm placeholder:text-ink-muted focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20 focus:outline-none disabled:bg-sand" />
+          <textarea ref={input} rows={1} maxLength={2000} value={message} disabled={Boolean(approval) || Boolean(confirmation)} onChange={(e) => setMessage(e.target.value)} onKeyDown={onKeyDown} aria-label="Tin nhắn" placeholder={approval ? 'Đang chờ nhân viên duyệt…' : confirmation ? 'Hãy bấm Xác nhận hoặc Huỷ ở trên…' : cooldown.active ? `Bạn gửi hơi nhanh, thử lại sau ${cooldown.remaining} giây…` : 'Nhập câu hỏi của bạn…'} className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-line bg-sand/50 px-3 py-2 text-sm placeholder:text-ink-muted focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/20 focus:outline-none disabled:bg-sand" />
           {pending
             ? <button type="button" onClick={() => controller.current?.abort()} className="h-10 shrink-0 rounded-xl border border-line px-3 text-sm font-medium text-ink-soft hover:bg-sand">Dừng</button>
             : <button disabled={locked || !message.trim()} aria-label="Gửi" className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white hover:bg-brand-hover disabled:opacity-40">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-[18px]" aria-hidden><path d="m5 12 14-7-5 14-2.5-5.5L5 12Z" /></svg>
               </button>}
         </div>
+        {cooldown.active && <p role="status" className="mt-1.5 text-center text-xs font-medium text-amber-700">Bạn gửi hơi nhanh. Có thể gửi lại sau {cooldown.remaining} giây.</p>}
         <p className="mt-1.5 text-center text-[10px] text-ink-muted">Enter để gửi · Shift+Enter xuống dòng · Trợ lý AI có thể nhầm, hãy kiểm tra thông tin quan trọng.</p>
       </form>
     </>

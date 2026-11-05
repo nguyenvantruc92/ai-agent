@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { addProductImage, reorderProductImages } from '@/features/catalog/admin-repository';
 import { detectImage, saveProductImage } from '@/features/catalog/images';
 import { imageOrderInput } from '@/features/catalog/schemas';
-import { HttpError, apiError, requireAdmin } from '@/lib/http';
+import { HttpError, apiError, rateLimitError, requireAdmin } from '@/lib/http';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 
 type Context = { params: Promise<{ id: string }> };
@@ -14,8 +14,8 @@ export async function POST(request: Request, { params }: Context) {
   if (denied) return denied;
   try {
     const productId = idSchema.parse((await params).id);
-    const limit = takeRateLimit(`image-upload:${clientIp(request)}`, 60, 3600);
-    if (!limit.allowed) throw new HttpError('Quá nhiều lần upload ảnh.', 429);
+    const limit = await takeRateLimit(`image-upload:${clientIp(request)}`, 60, 3600);
+    if (!limit.allowed) throw rateLimitError('Quá nhiều lần upload ảnh.', limit.retryAfterSeconds);
     const form = await request.formData();
     const file = form.get('file');
     if (!(file instanceof File)) throw new HttpError('Cần chọn file ảnh.', 400);

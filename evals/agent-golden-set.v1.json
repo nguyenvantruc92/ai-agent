@@ -933,5 +933,134 @@
         "status": "delivered"
       }
     }
+  },
+  {
+    "id": "long-01",
+    "category": "long_conversation",
+    "steps": [
+      {
+        "user": "Tôi đang tìm áo polo trắng, tôi mặc size M."
+      },
+      {
+        "user": "Phí giao hàng của shop tính thế nào?"
+      },
+      {
+        "user": "Đổi size trong bao nhiêu ngày?"
+      },
+      {
+        "user": "Shop có áo khoác không?"
+      },
+      {
+        "user": "Áo sơ mi có những size nào?"
+      },
+      {
+        "user": "Sản phẩm giảm giá có được đổi không?"
+      },
+      {
+        "user": "Thanh toán khi nhận hàng được không?"
+      },
+      {
+        "user": "Có quần tây màu đen không?"
+      },
+      {
+        "user": "Tất đã mở có trả được không?"
+      },
+      {
+        "user": "Quay lại mẫu áo polo trắng lúc đầu, thêm 1 cái đúng size của tôi vào giỏ giúp nhé."
+      }
+    ],
+    "expect": {
+      "finalKind": "answer",
+      "toolsInclude": [
+        "add_to_cart"
+      ],
+      "cartLines": 1,
+      "orders": 0
+    }
+  },
+  {
+    "id": "long-02",
+    "category": "long_conversation",
+    "steps": [
+      {
+        "user": "Áo polo pique trắng PL-002 giá bao nhiêu?"
+      },
+      {
+        "user": "Phí giao hàng của shop tính thế nào?"
+      },
+      {
+        "user": "Đổi size trong bao nhiêu ngày?"
+      },
+      {
+        "user": "Shop có áo khoác không?"
+      },
+      {
+        "user": "Áo sơ mi có những size nào?"
+      },
+      {
+        "user": "Sản phẩm giảm giá có được đổi không?"
+      },
+      {
+        "user": "Thanh toán khi nhận hàng được không?"
+      },
+      {
+        "user": "Có quần tây màu đen không?"
+      },
+      {
+        "user": "Tất đã mở có trả được không?"
+      },
+      {
+        "user": "Vậy giá áo PL-002 bây giờ là bao nhiêu?"
+      }
+    ],
+    "expect": {
+      "finalKind": "answer",
+      "route": "agent",
+      "anyKeywords": [
+        "389"
+      ],
+      "insufficient": false
+    }
+  },
+  {
+    "id": "long-03",
+    "category": "long_conversation",
+    "steps": [
+      {
+        "user": "Phí giao hàng của shop tính thế nào?"
+      },
+      {
+        "user": "Đổi size trong bao nhiêu ngày?"
+      },
+      {
+        "user": "Shop có áo khoác không?"
+      },
+      {
+        "user": "Áo sơ mi có những size nào?"
+      },
+      {
+        "user": "Sản phẩm giảm giá có được đổi không?"
+      },
+      {
+        "user": "Thanh toán khi nhận hàng được không?"
+      },
+      {
+        "user": "Có quần tây màu đen không?"
+      },
+      {
+        "user": "Tất đã mở có trả được không?"
+      },
+      {
+        "user": "Đơn FT-2026-1001 áo SM-001 bị rộng, tôi muốn đổi sang size L (SĐT 0900261001)"
+      }
+    ],
+    "expect": {
+      "finalKind": "pending",
+      "pendingAction": "exchange_size",
+      "requests": {
+        "orderId": "FT-2026-1001",
+        "count": 0
+      }
+    }
   }
 ]

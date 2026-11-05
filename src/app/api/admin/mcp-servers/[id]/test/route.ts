@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { testServer } from '@/features/mcp/servers';
-import { apiError, HttpError, requireAdmin } from '@/lib/http';
+import { apiError, HttpError, rateLimitError, requireAdmin } from '@/lib/http';
 import { clientIp, takeRateLimit } from '@/lib/rate-limit';
 
 type Context = { params: Promise<{ id: string }> };
@@ -12,8 +12,8 @@ export async function POST(request: Request, { params }: Context) {
   if (denied) return denied;
   try {
     const id = z.string().uuid('ID không hợp lệ.').parse((await params).id);
-    const limit = takeRateLimit(`mcp-test:${clientIp(request)}`, 30, 600);
-    if (!limit.allowed) throw new HttpError(`Kiểm tra quá nhiều lần. Thử lại sau ${limit.retryAfterSeconds} giây.`, 429);
+    const limit = await takeRateLimit(`mcp-test:${clientIp(request)}`, 30, 600);
+    if (!limit.allowed) throw rateLimitError('Kiểm tra quá nhiều lần.', limit.retryAfterSeconds);
     return NextResponse.json(await testServer(id));
   } catch (error) { return apiError(error); }
 }

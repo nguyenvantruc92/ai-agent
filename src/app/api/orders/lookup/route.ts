@@ -8,7 +8,7 @@ import { guardWrite } from '@/lib/shop-api';
 /** Body: { code, phone }. Wrong combinations are throttled and always answer with the same message. */
 export async function POST(request: Request) {
   try {
-    guardWrite(request, 'lookup', 30, 60);
+    await guardWrite(request, 'lookup', 30, 60);
     const { code, phone } = lookupInput.parse(await request.json());
     return NextResponse.json(await lookupCustomerOrder(code, phone, clientIp(request)));
   } catch (error) { return apiError(error); }

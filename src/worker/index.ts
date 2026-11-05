@@ -8,13 +8,18 @@ import { uploadRoot } from '@/features/knowledge/files';
 import { buildCatalogChunks } from '@/features/catalog/chunks';
 import { catalogMime } from '@/features/catalog/sync';
 import { parsePolicyTable, parsePolicyText } from '@/features/knowledge/parser';
+import { parseTextDocument } from '@/features/knowledge/parser';
 import { extractPdf } from '@/features/knowledge/pdf';
 import type { ParsedChunk } from '@/features/knowledge/types';
+import { needsHumanReview, scanKnowledgeText } from '@/features/knowledge/safety';
 import { openai } from '@/lib/openai';
+import { runAlertChecks } from '@/features/monitoring/alerts';
 import { workerLogger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 import { cleanupAgentState, expireApprovals } from '@/worker/maintenance';
+import { cleanupRateLimitBuckets } from '@/lib/rate-limit';
 
-type Job = { id: string; document_id: string; document_version_id: string; version: number; storage_key: string; mime_type: string };
+type Job = { id: string; document_id: string; document_version_id: string; version: number; storage_key: string; mime_type: string; content_kind: 'general' | 'policy'; policy_key: string | null; effective_from: string | null; effective_to: string | null; supersedes_document_id: string | null; safety_status: string };
 
 const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,7 +28,7 @@ const vectorLiteral = (vector: number[]) => `[${vector.join(',')}]`;
 async function claimJob(): Promise<Job | undefined> {
   return sql.begin(async (tx) => {
     const [job] = await tx<Job[]>`
-      SELECT j.id, j.document_id, j.document_version_id, v.version, d.storage_key, d.mime_type
+      SELECT j.id, j.document_id, j.document_version_id, v.version, d.storage_key, d.mime_type, d.content_kind, d.policy_key, d.effective_from, d.effective_to, d.supersedes_document_id, v.safety_status
       FROM ingestion_jobs j
       JOIN knowledge_documents d ON d.id = j.document_id
       JOIN knowledge_document_versions v ON v.id = j.document_version_id
@@ -46,6 +51,7 @@ async function parse(job: Job): Promise<ParsedChunk[]> {
   if (job.mime_type === catalogMime) return buildCatalogChunks();
   if (job.mime_type === xlsxMime) throw new Error('Catalog XLSX không còn được index trực tiếp; hãy import XLSX để nạp vào danh sách sản phẩm.');
   const buffer = await readFile(join(uploadRoot, job.storage_key));
+  if (job.mime_type === 'text/markdown' || job.mime_type === 'text/plain') return parseTextDocument(buffer.toString('utf8'));
   const { text, items } = await extractPdf(buffer);
   const updatedAt = text.match(/Cập nhật\s+(\d{4}-\d{2}-\d{2})/)?.[1] ?? new Date().toISOString().slice(0, 10);
   const tableChunks = parsePolicyTable(items, updatedAt);
@@ -94,27 +100,44 @@ async function processJob(job: Job) {
   try {
     const chunks = await parse(job);
     if (!chunks.length) throw new Error('Tài liệu không có chunk nào để index.');
-    const duplicate = chunks.find((chunk, index) => chunks.findIndex((other) => other.sourceId === chunk.sourceId) !== index);
+    const findings = env.KNOWLEDGE_SAFETY_REVIEW_ENABLED ? scanKnowledgeText(chunks.map((chunk) => chunk.content).join('\n\n')) : [];
+    if (needsHumanReview(findings) && job.safety_status !== 'approved') {
+      await sql.begin(async (tx) => {
+        await tx`UPDATE knowledge_document_versions SET status = 'review', safety_status = 'needs_review', safety_findings = ${tx.json(findings)}, error = NULL WHERE id = ${job.document_version_id}`;
+        await tx`UPDATE knowledge_documents SET status = 'review', updated_at = now() WHERE id = ${job.document_id}`;
+        await tx`UPDATE ingestion_jobs SET status = 'completed', finished_at = now(), error = NULL WHERE id = ${job.id}`;
+      });
+      workerLogger.warn({ trace_id: traceId, stage: 'ingestion.review_required', jobId: job.id, rules: findings.map((finding) => finding.rule), latencyMs: Date.now() - startedAt });
+      return;
+    }
+    const lifecycle: Record<string, string | null> = job.content_kind === 'policy' ? {
+      policy_key: job.policy_key,
+      effective_from: job.effective_from,
+      effective_to: job.effective_to,
+      supersedes_document_id: job.supersedes_document_id,
+    } : {};
+    const enriched = chunks.map((chunk) => ({ ...chunk, metadata: { ...chunk.metadata, ...lifecycle } }));
+    const duplicate = enriched.find((chunk, index) => enriched.findIndex((other) => other.sourceId === chunk.sourceId) !== index);
     if (duplicate) throw new Error(`Source ID bị trùng: ${duplicate.sourceId}`);
 
-    const embeddings = await reusableEmbeddings(job.document_id, [...new Set(chunks.map((chunk) => chunk.contentHash))]);
-    const reusedCount = chunks.filter((chunk) => embeddings.has(chunk.contentHash)).length;
-    const { embedded, tokens } = await embedMissing(chunks, embeddings, traceId);
+    const embeddings = await reusableEmbeddings(job.document_id, [...new Set(enriched.map((chunk) => chunk.contentHash))]);
+    const reusedCount = enriched.filter((chunk) => embeddings.has(chunk.contentHash)).length;
+    const { embedded, tokens } = await embedMissing(enriched, embeddings, traceId);
 
     await sql.begin(async (tx) => {
       await tx`DELETE FROM knowledge_chunks WHERE document_version_id = ${job.document_version_id}`;
-      for (const chunk of chunks) {
+      for (const chunk of enriched) {
         await tx`
           INSERT INTO knowledge_chunks (
             id, document_version_id, source_id, source_type, title, content, metadata, content_hash, embedding_model, embedding
           ) VALUES (
             ${randomUUID()}, ${job.document_version_id}, ${chunk.sourceId}, ${chunk.sourceType}, ${chunk.title}, ${chunk.content},
-            ${tx.json({ ...chunk.metadata, document_version: job.version, content_hash: chunk.contentHash })},
+            ${tx.json({ ...chunk.metadata, document_id: job.document_id, document_version: job.version, content_hash: chunk.contentHash })},
             ${chunk.contentHash}, ${env.OPENAI_EMBEDDING_MODEL}, ${embeddings.get(chunk.contentHash)!}::vector
           )
         `;
       }
-      await tx`UPDATE knowledge_document_versions SET status = 'ready', ready_at = now(), error = NULL WHERE id = ${job.document_version_id}`;
+      await tx`UPDATE knowledge_document_versions SET status = 'ready', safety_status = 'approved', safety_findings = ${tx.json(findings)}, ready_at = now(), error = NULL WHERE id = ${job.document_version_id}`;
       // Activation is the last step, so chat switches versions atomically.
       await tx`UPDATE knowledge_documents SET status = 'ready', active_version_id = ${job.document_version_id}, updated_at = now() WHERE id = ${job.document_id}`;
       await tx`UPDATE ingestion_jobs SET status = 'completed', finished_at = now(), error = NULL WHERE id = ${job.id}`;
@@ -123,7 +146,7 @@ async function processJob(job: Job) {
         await tx`UPDATE knowledge_documents SET status = 'deleted', deleted_at = now(), updated_at = now() WHERE mime_type = ${xlsxMime} AND deleted_at IS NULL`;
       }
     });
-    workerLogger.info({ trace_id: traceId, stage: 'ingestion.completed', jobId: job.id, chunks: chunks.length, embedded, reused: reusedCount, embeddingTokens: tokens, latencyMs: Date.now() - startedAt });
+    workerLogger.info({ trace_id: traceId, stage: 'ingestion.completed', jobId: job.id, chunks: enriched.length, embedded, reused: reusedCount, embeddingTokens: tokens, latencyMs: Date.now() - startedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown ingestion error';
     await sql.begin(async (tx) => {
@@ -131,7 +154,7 @@ async function processJob(job: Job) {
       await tx`UPDATE knowledge_documents SET status = 'failed', updated_at = now() WHERE id = ${job.document_id}`;
       await tx`UPDATE ingestion_jobs SET status = 'failed', error = ${message}, finished_at = now() WHERE id = ${job.id}`;
     });
-    workerLogger.error({ trace_id: traceId, stage: 'ingestion.failed', jobId: job.id, error: message, latencyMs: Date.now() - startedAt });
+    workerLogger.error({ trace_id: traceId, stage: 'ingestion.failed', jobId: job.id, error: safeError(error), latencyMs: Date.now() - startedAt });
   }
 }
 
@@ -142,7 +165,7 @@ function every(ms: number, task: () => Promise<void>) {
     if (running) return;
     running = true;
     try { await task(); }
-    catch (error) { workerLogger.error({ stage: 'maintenance.failed', error: error instanceof Error ? error.message : String(error) }); }
+    catch (error) { workerLogger.error({ stage: 'maintenance.failed', error: safeError(error) }); }
     finally { running = false; }
   };
   void run();
@@ -153,6 +176,8 @@ async function main() {
   workerLogger.info({ stage: 'worker.started' });
   every(15 * 60 * 1_000, expireApprovals);
   every(24 * 60 * 60 * 1_000, cleanupAgentState);
+  every(60 * 60 * 1_000, cleanupRateLimitBuckets);
+  every(env.ALERT_CHECK_INTERVAL_SECONDS * 1_000, async () => { await runAlertChecks(); });
   while (true) {
     const job = await claimJob();
     if (job) await processJob(job);

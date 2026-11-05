@@ -7,8 +7,10 @@ import { decideConfirmation, getConfirmation, isExpired, pendingConfirmationForT
 import type { AgentGraph, ApprovalInterrupt, ApprovalResume, ConfirmInterrupt, ConfirmResume } from '@/features/agent/graph';
 import { getAgentRuntime } from '@/features/agent/runtime';
 import { hashVisitorId } from '@/features/chat/generation';
-import type { FinalAnswer, SourceRef } from '@/features/chat/rag-answer';
+import type { FinalAnswer, SourceRef } from '@/features/chat/answer';
 import { logger } from '@/lib/logger';
+import { metrics, safely } from '@/lib/metrics';
+import { ref } from '@/lib/redact';
 
 export type TurnEvent = { type: 'partial'; answer: string } | { type: 'status'; status: string };
 
@@ -85,6 +87,11 @@ async function runAndFinish(graph: AgentGraph, input: Parameters<AgentGraph['str
     metadata: { kind, sources: answer.sources, traceId, route: answer.diagnostics.route },
   });
   logger.info({ trace_id: traceId, stage: 'agent.completed', route: answer.diagnostics.route, validation: answer.diagnostics.validation, unsupportedNumbers: answer.diagnostics.unsupportedNumbers, toolCalls, steps: toolCalls.length, citations: answer.citedSourceIds, usage: { inputTokens: answer.diagnostics.inputTokens, outputTokens: answer.diagnostics.outputTokens } });
+  safely(() => {
+    metrics.tokens.inc({ kind: 'input' }, answer.diagnostics.inputTokens);
+    metrics.tokens.inc({ kind: 'output' }, answer.diagnostics.outputTokens);
+    metrics.agentRoute.inc({ route: answer.diagnostics.route, validation: String(answer.diagnostics.validation ?? 'none') });
+  });
   return { kind: 'answer', traceId, toolCalls, messageId, answer };
 }
 
@@ -137,7 +144,7 @@ export async function decideAndResume(input: { approvalId: string; decision: Exc
   if (!waiting) return { resumed: false as const, approval: current! };
 
   const resume: ApprovalResume = { decision: input.decision, note: current!.note };
-  logger.info({ trace_id: input.traceId, stage: 'agent.resume', approvalId: input.approvalId, decision: input.decision, threadId: approval.thread_id });
+  logger.info({ trace_id: input.traceId, stage: 'agent.resume', approvalId: input.approvalId, decision: input.decision, threadRef: ref(approval.thread_id) });
   const result = await runAndFinish(graph, new Command({ resume }), approval.thread_id, input.traceId, 'approval_result', undefined);
   return { resumed: true as const, approval: current!, result };
 }
@@ -180,7 +187,7 @@ export async function resumeConfirmation(prepared: PreparedDecision, traceId: st
   if (resuming.has(prepared.threadId)) throw new ConfirmationConflictError('Yêu cầu đang được xử lý.');
   resuming.add(prepared.threadId);
   try {
-    logger.info({ trace_id: traceId, stage: 'agent.resume_confirmation', confirmationId: prepared.confirmationId, decision: prepared.decision, threadId: prepared.threadId });
+    logger.info({ trace_id: traceId, stage: 'agent.resume_confirmation', confirmationId: prepared.confirmationId, decision: prepared.decision, threadRef: ref(prepared.threadId) });
     const result = await runAndFinish(graph, new Command({ resume: { decision: prepared.decision } satisfies ConfirmResume }), prepared.threadId, traceId, 'answer', signal, onEvent);
     return { resumed: true as const, status: prepared.status, result };
   } finally { resuming.delete(prepared.threadId); }
