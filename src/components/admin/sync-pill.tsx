@@ -13,7 +13,7 @@ export function SyncPill({ sync }: { sync: SyncState }) {
   const { text, color, Icon } = view[sync.state];
   return (
     <span title={sync.error ?? (sync.at ? `Lần gần nhất: ${new Date(sync.at).toLocaleString('vi-VN')}` : undefined)}>
-      <Badge color={color} size="lg"><Icon className={sync.state === 'syncing' ? 'animate-spin' : ''} />{text}</Badge>
+      <Badge color={color}><Icon className={sync.state === 'syncing' ? 'animate-spin' : ''} />{text}</Badge>
     </span>
   );
 }

@@ -30,7 +30,7 @@ export function MultiSelect({ options, value, onChange, placeholder = 'Chọn…
     <div ref={root} className="relative">
       <div role="button" tabIndex={0} aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-label={label}
         onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setOpen((current) => !current); } }}
-        className={cn('flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-[10px] border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-theme-xs outline-hidden transition-colors focus-visible:border-brand-300 focus-visible:ring-3 focus-visible:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900', open && 'border-brand-300 ring-3 ring-brand-500/20')}>
+        className={cn('flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-theme-xs outline-hidden transition-colors focus-visible:border-brand-300 focus-visible:ring-3 focus-visible:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900', open && 'border-brand-300 ring-3 ring-brand-500/20')}>
         <span className="flex flex-1 flex-wrap items-center gap-1.5">
           {selected.length === 0 && <span className="px-1 text-gray-400">{placeholder}</span>}
           {selected.map((item) => (

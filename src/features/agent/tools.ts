@@ -130,3 +130,9 @@ export type ToolKind = 'read' | 'cart' | 'confirm' | 'approval';
 /** How a built-in tool runs: fixed in code, never configurable from the admin UI. */
 export const builtinToolKind = (name: string): ToolKind =>
   writeTools.has(name) ? 'approval' : confirmTools.has(name) ? 'confirm' : cartTools.has(name) ? 'cart' : 'read';
+
+/** What each built-in tool does and how it runs, for the AI that writes agent prompts. */
+export const builtinToolCatalog = (names: Iterable<string>) => {
+  const wanted = new Set(names);
+  return builtinTools.filter((item) => wanted.has(item.name)).map((item) => ({ name: item.name, description: item.description, kind: builtinToolKind(item.name) }));
+};

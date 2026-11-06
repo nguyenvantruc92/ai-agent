@@ -31,4 +31,5 @@ export { TrashBinIcon } from "./trash-bin";
 export { UploadIcon } from "./upload";
 export { XIcon } from "./x";
 export { GearIcon } from "./gear";
+export { InfoIcon } from "./info";
 export { DollarIcon } from "./dollar";

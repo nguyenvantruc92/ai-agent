@@ -97,9 +97,9 @@ export function ProductForm({ categories, product }: { categories: CategoryRow[]
             <h2 className={cardTitle}>Thông tin chung</h2>
             <div className="grid gap-4 sm:grid-cols-[170px_1fr]">
               <FormField label="Mã sản phẩm" hint={product ? 'Không đổi được sau khi tạo' : 'Ví dụ SM-001'}><Input required disabled={Boolean(product)} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} placeholder="SM-001" /></FormField>
-              <FormField label="Tên sản phẩm" hint={!product && name ? `Đường dẫn: /${slugify(name)}-${slugify(code || 'ma')}` : undefined}><Input required value={name} onChange={(e) => setName(e.target.value)} maxLength={160} /></FormField>
+              <FormField label="Tên sản phẩm" note={!product && name ? `Đường dẫn: /${slugify(name)}-${slugify(code || 'ma')}` : undefined}><Input required value={name} onChange={(e) => setName(e.target.value)} maxLength={160} /></FormField>
             </div>
-            <FormField label="Mô tả" hint={`${description.length}/2000 ký tự · chatbot dùng mô tả này để tư vấn`}><Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} /></FormField>
+            <FormField label="Mô tả" hint="Chatbot dùng mô tả này để tư vấn cho khách." note={`${description.length}/2000 ký tự`}><Textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} /></FormField>
             <FormField label="Chất liệu"><Input value={material} onChange={(e) => setMaterial(e.target.value)} maxLength={200} placeholder="100% cotton" /></FormField>
           </section>
           <VariantsEditor value={variants} onChange={setVariants} />
@@ -112,8 +112,8 @@ export function ProductForm({ categories, product }: { categories: CategoryRow[]
               <option value="draft">Nháp</option><option value="active">Đang bán</option><option value="archived">Lưu trữ</option></NativeSelect></FormField>
             <FormField label="Danh mục"><NativeSelect required value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               {categories.map((category) => <option key={category.id} value={category.id}>{category.name}{category.isActive ? '' : ' (đang ẩn)'}</option>)}</NativeSelect></FormField>
-            <FormField label="Giá bán (VNĐ)" hint={priceVnd ? formatVnd(priceVnd) : undefined}><Input required type="number" min={0} step={1000} value={priceVnd} onChange={(e) => setPriceVnd(Number(e.target.value))} /></FormField>
-            <FormField label="Giá gốc (VNĐ)" hint={discount ? `Hiển thị giảm ${discount}%` : 'Điền khi đang giảm giá; phải lớn hơn giá bán.'}><Input type="number" min={0} step={1000} value={compareAt} onChange={(e) => setCompareAt(e.target.value === '' ? '' : Number(e.target.value))} /></FormField>
+            <FormField label="Giá bán (VNĐ)" note={priceVnd ? formatVnd(priceVnd) : undefined}><Input required type="number" min={0} step={1000} value={priceVnd} onChange={(e) => setPriceVnd(Number(e.target.value))} /></FormField>
+            <FormField label="Giá gốc (VNĐ)" hint="Điền khi đang giảm giá; phải lớn hơn giá bán." note={discount ? `Hiển thị giảm ${discount}%` : undefined}><Input type="number" min={0} step={1000} value={compareAt} onChange={(e) => setCompareAt(e.target.value === '' ? '' : Number(e.target.value))} /></FormField>
             <dl className="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-sm dark:bg-white/3">
               <div><dt className="text-theme-xs text-gray-500 dark:text-gray-400">Biến thể đang bán</dt><dd className="font-semibold text-gray-800 tabular-nums dark:text-white/90">{variants.filter((variant) => variant.isActive).length}</dd></div>
               <div><dt className="text-theme-xs text-gray-500 dark:text-gray-400">Tổng tồn kho</dt><dd className="font-semibold text-gray-800 tabular-nums dark:text-white/90">{totalStock}</dd></div>

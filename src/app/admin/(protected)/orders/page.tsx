@@ -13,7 +13,7 @@ import { formatVnd } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Đơn hàng · Admin' };
 
-const input = 'h-11 rounded-[10px] border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-hidden focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90';
+const input = 'h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 shadow-theme-xs outline-hidden focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90';
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const raw = await searchParams;
@@ -60,7 +60,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </NativeSelect>
           <input type="date" name="from" defaultValue={query.from} aria-label="Từ ngày" className={input} />
           <input type="date" name="to" defaultValue={query.to} aria-label="Đến ngày" className={input} />
-          <Button type="submit" variant="outline" size="lg">Lọc</Button>
+          <Button size="sm" type="submit" variant="outline">Lọc</Button>
           {filtered && <Link href={query.status ? `/admin/orders?status=${query.status}` : '/admin/orders'} className={buttonVariants({ variant: 'ghost', size: 'lg' })}>Xóa lọc</Link>}
         </form>
       </div>

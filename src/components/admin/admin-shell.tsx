@@ -18,7 +18,7 @@ const sidebarKey = 'admin-sidebar-collapsed';
 
 function ThemeToggle() {
   const { theme, toggle } = useAdminTheme();
-  return <Button variant="outline" size="icon-lg" onClick={toggle} aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}>{theme === 'dark' ? <SunIcon /> : <MoonIcon />}</Button>;
+  return <Button variant="outline" size="icon-sm" onClick={toggle} aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}>{theme === 'dark' ? <SunIcon /> : <MoonIcon />}</Button>;
 }
 
 function UserMenu() {
@@ -27,7 +27,7 @@ function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-3 rounded-lg p-1 text-start outline-hidden focus-visible:ring-3 focus-visible:ring-brand-500/20">
-        <Avatar size="lg"><AvatarFallback className="bg-brand-50 font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">A</AvatarFallback></Avatar>
+        <Avatar size="sm"><AvatarFallback className="bg-brand-50 font-medium text-brand-600 dark:bg-brand-500/15 dark:text-brand-400">A</AvatarFallback></Avatar>
         <span className="hidden sm:block"><span className="block text-sm font-medium text-gray-800 dark:text-white/90">Quản trị viên</span><span className="block text-xs text-gray-500 dark:text-gray-400">Tomodev Fashion</span></span>
         <ChevronDownIcon className="hidden size-5 text-gray-500 sm:block dark:text-gray-400" />
       </DropdownMenuTrigger>
@@ -72,9 +72,9 @@ function Shell({ pendingApprovals, processingOrders, sync, children }: { pending
     { title: 'AI', items: [
       { href: '/admin/agents', label: 'AI Agents', icon: <SparkleIcon /> },
       { href: '/admin/knowledge', label: 'Knowledge', icon: <DatabaseIcon /> },
-      { href: '/admin/monitoring', label: 'Monitoring', icon: <LayoutGridIcon /> },
       { href: '/admin/mcp-servers', label: 'MCP Server', icon: <PlugIcon /> },
       { href: '/admin/approvals', label: 'Phê duyệt', icon: <TaskIcon />, badge: pendingApprovals },
+      { href: '/admin/monitoring', label: 'Monitoring', icon: <LayoutGridIcon /> },
     ] },
     { title: 'Hệ thống', items: [{ href: '/admin/settings', label: 'Cài đặt', icon: <GearIcon /> }] },
   ];
@@ -127,8 +127,8 @@ function Shell({ pendingApprovals, processingOrders, sync, children }: { pending
       {mobileOpen && <div className="fixed inset-0 z-99998 bg-gray-900/50 lg:hidden" onClick={() => setMobileOpen(false)} aria-hidden />}
 
       <div className={cn('transition-all duration-300 ease-in-out', collapsed ? 'lg:ml-22.5' : 'lg:ml-72.5')}>
-        <header className="sticky top-0 z-99 flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-3 sm:px-6 dark:border-gray-800 dark:bg-gray-900">
-          <Button variant="outline" size="icon-lg" className="text-gray-500 dark:text-gray-400" onClick={toggleSidebar} aria-label="Bật/tắt menu">{mobileOpen ? <XIcon className="size-6" /> : <MenuTwoIcon />}</Button>
+        <header className="sticky top-0 z-99 flex items-center gap-3 border-b border-gray-200 bg-white px-3 py-2 sm:px-6 dark:border-gray-800 dark:bg-gray-900">
+          <Button variant="outline" size="icon-sm" className="text-gray-500 dark:text-gray-400" onClick={toggleSidebar} aria-label="Bật/tắt menu">{mobileOpen ? <XIcon className="size-5" /> : <MenuTwoIcon />}</Button>
           <p className="hidden text-sm text-gray-500 sm:block dark:text-gray-400">Tomodev Fashion</p>
           <div className="ml-auto flex items-center gap-3"><div className="hidden md:block"><SyncPill sync={sync} /></div><ThemeToggle /><UserMenu /></div>
         </header>

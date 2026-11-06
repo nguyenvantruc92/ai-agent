@@ -104,7 +104,7 @@ export default function KnowledgeClient() {
         <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">Tìm trên toàn bộ tài liệu, không lọc theo scope. Để thử một scope, mở scope đó.</p>
         <form className="mt-4 flex gap-2" onSubmit={testRetrieval}>
           <div className="relative flex-1"><SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-gray-400" /><Input className="pl-11" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ví dụ: Phí giao hàng bao nhiêu?" /></div>
-          <Button type="submit" size="lg">Chạy</Button>
+          <Button size="sm" type="submit">Chạy</Button>
         </form>
         {retrieval && (
           <div className="mt-5 space-y-3 text-sm text-gray-700 dark:text-gray-300">

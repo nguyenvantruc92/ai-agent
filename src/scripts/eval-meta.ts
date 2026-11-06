@@ -13,11 +13,10 @@ function git(command: string) {
 
 /**
  * What an eval result must be traceable to: the commit, the agent that answered (model and limits now live in the
- * database, not in env) and the exact prompts. Inside the container there is no .git, so CI passes EVAL_COMMIT.
+ * database, not in env) and the exact prompt (it lives entirely in the agent's `instructions`). Inside the container there is no .git, so CI passes EVAL_COMMIT.
  */
 export async function evalRunMetadata() {
   const agent = await getDefaultAgent();
-  const core = await readFile(join(process.cwd(), 'prompts', 'fashion-tomodev-agent-core.md'), 'utf8');
   const commit = process.env.EVAL_COMMIT ?? process.env.GITHUB_SHA ?? git('rev-parse HEAD') ?? 'unknown';
   const status = process.env.EVAL_COMMIT ? '' : git('status --porcelain');
   return {
@@ -25,7 +24,6 @@ export async function evalRunMetadata() {
     dirty: status === null ? null : status.length > 0,
     ranAt: new Date().toISOString(),
     agent: { id: agent.id, slug: agent.slug, model: agent.model, temperature: agent.temperature, maxSteps: agent.max_steps, maxToolCalls: agent.max_tool_calls, instructionsSha: sha(agent.instructions) },
-    corePromptSha: sha(core),
   };
 }
 

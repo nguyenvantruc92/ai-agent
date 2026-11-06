@@ -111,13 +111,58 @@ describe.skipIf(!url)('AI agent administration (Postgres)', () => {
     it('validates the form fields', () => {
       const base = { name: 'Tư vấn', slug: 'tu-van', instructions: 'Bạn là trợ lý tư vấn thời trang nam.', model: 'm', temperature: 0.3, maxSteps: 5, maxToolCalls: 5 };
       expect(admin.agentInput.safeParse(base).success).toBe(true);
-      expect(admin.agentInput.safeParse({ ...base, instructions: 'Hôm nay là {{today}} nhé, hãy trả lời ngắn.' }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, instructions: 'ngắn' }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, slug: 'Bad Slug' }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, temperature: 3 }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, maxSteps: 0 }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, maxToolCalls: 21 }).success).toBe(false);
       expect(admin.agentInput.safeParse({ ...base, mcpServerIds: ['not-a-uuid'] }).success).toBe(false);
+    });
+
+    it('stores the whole prompt, the description and the tools signature the prompt was generated for', async () => {
+      const id = await admin.createAgent(input({ description: 'Tư vấn viên thân thiện, xưng mình – bạn.', promptToolsSignature: 'b:search_products|s:search_policy' }));
+      expect(await admin.getAgentDetail(id)).toMatchObject({ description: 'Tư vấn viên thân thiện, xưng mình – bạn.', prompt_tools_signature: 'b:search_products|s:search_policy', legacy_prompt: false });
+      await admin.updateAgent(id, input({ instructions: 'Bạn là trợ lý mới, trả lời ngắn gọn bằng tiếng Việt.', promptToolsSignature: null }));
+      expect(await admin.getAgentDetail(id)).toMatchObject({ instructions: 'Bạn là trợ lý mới, trả lời ngắn gọn bằng tiếng Việt.', prompt_tools_signature: null });
+      // Prompts may mention {{...}}: nothing in code substitutes them any more.
+      expect(admin.agentInput.safeParse({ ...input(), instructions: 'Dùng {{ngoặc}} tùy ý, đây là prompt hợp lệ dài đủ.' }).success).toBe(true);
+    });
+
+    it('gives agents created before this change the default rules once, and leaves new agents alone', async () => {
+      const legacy = await admin.createAgent(input({ slug: 'cu', instructions: 'Bạn là trợ lý cũ của cửa hàng Fashion Tomodev.' }));
+      await sql`UPDATE ai_agents SET legacy_prompt = true WHERE id = ${legacy}`;
+      const fresh = await admin.createAgent(input({ slug: 'moi', instructions: 'Bạn là trợ lý mới của cửa hàng Fashion Tomodev.' }));
+      seed.resetAiSeedCache();
+      await seed.ensureAiDefaults();
+      const upgraded = await admin.getAgentDetail(legacy);
+      expect(upgraded?.legacy_prompt).toBe(false);
+      expect(upgraded?.instructions.startsWith('Bạn là trợ lý cũ của cửa hàng Fashion Tomodev.\n\n')).toBe(true);
+      expect(upgraded?.instructions).toContain('TRA ĐƠN VÀ XÁC MINH');
+      expect((await admin.getAgentDetail(fresh))?.instructions).toBe('Bạn là trợ lý mới của cửa hàng Fashion Tomodev.');
+      // Running the seed again does not append the rules a second time.
+      seed.resetAiSeedCache();
+      await seed.ensureAiDefaults();
+      expect(((await admin.getAgentDetail(legacy))?.instructions.match(/TRA ĐƠN VÀ XÁC MINH/g) ?? []).length).toBe(1);
+    });
+
+    it('describes the selected tools to the prompt writer and signs them, without saving anything', async () => {
+      const promptModule = await import('@/features/ai/agent-prompt');
+      const seen: { system: string; user: string }[] = [];
+      const complete = async (system: string, user: string) => { seen.push({ system, user }); return 'Bạn là trợ lý tư vấn. '.repeat(10); };
+      const picked = { name: 'Tư vấn', description: 'Thân thiện, xưng mình – bạn.', model: 'gpt-4.1-2025-04-14', scopeIds: [policyScopeId], mcpServerIds: [builtinId, weatherId] };
+      await servers.setBuiltinSelectedTools(builtinId, [{ name: 'search_products', requiresApproval: false }, { name: 'checkout', requiresApproval: false }]);
+      const result = await promptModule.generateInstructions(promptModule.generatePromptInput.parse(picked), complete);
+      expect(result.instructions).toContain('Bạn là trợ lý tư vấn.');
+      expect(result.signature).toBe(['b:checkout', 'b:search_products', 's:search_policy', 'x:weather:delete_all:approval', 'x:weather:get_weather:auto'].join('|'));
+      expect(seen[0].user).toContain('Thân thiện, xưng mình – bạn.');
+      expect(seen[0].user).toContain('- checkout [khách phải bấm Xác nhận');
+      expect(seen[0].user).toContain('- search_policy (Chính sách)');
+      expect(seen[0].user).toContain('weather__delete_all [cần nhân viên duyệt]');
+      expect(seen[0].user).not.toContain('add_to_cart'); // not ticked on the built-in server
+      expect(seen[0].system).toContain('final_answer');
+      expect((await sql`SELECT count(*)::int AS n FROM ai_agents WHERE slug = 'tu-van'`)[0].n).toBe(0);
+      await expect(promptModule.generateInstructions(promptModule.generatePromptInput.parse({ ...picked, model: 'not-a-model' }), complete)).rejects.toThrow(/chưa được phép/);
+      await expect(promptModule.generateInstructions(promptModule.generatePromptInput.parse({ ...picked, scopeIds: [randomUUID()] }), complete)).rejects.toThrow(/scope không tồn tại/);
     });
 
     it('refuses a duplicate slug', async () => {

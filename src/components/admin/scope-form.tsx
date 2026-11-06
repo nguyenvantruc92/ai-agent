@@ -9,6 +9,7 @@ import { Panel } from '@/components/admin/page-header';
 import { StatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/admin-ui/badge';
 import { Button } from '@/components/admin-ui/button';
+import { InfoTip } from '@/components/admin-ui/info-tip';
 import { Input } from '@/components/admin-ui/input';
 import { Switch } from '@/components/admin-ui/switch';
 import { Textarea } from '@/components/admin-ui/textarea';
@@ -83,14 +84,14 @@ export function ScopeForm({ scope, documents }: { scope?: ScopeFormScope; docume
               <Input required maxLength={41} value={toolName} placeholder="search_policy" className="font-mono"
                 onChange={(event) => { setToolName(event.target.value); setToolNameEdited(true); }} />
             </FormField>
-            <FormField className="lg:col-span-2" label="Mô tả tool" hint={`Model đọc mô tả này để quyết định khi nào gọi tool. Nên nêu rõ loại câu hỏi nên và không nên dùng. (${description.length}/1000)`}>
+            <FormField className="lg:col-span-2" label="Mô tả tool" hint="Model đọc mô tả này để quyết định khi nào gọi tool. Nên nêu rõ loại câu hỏi nên và không nên dùng." note={`${description.length}/1000`}>
               <Textarea required minLength={20} maxLength={1000} rows={4} value={description} onChange={(event) => setDescription(event.target.value)}
                 placeholder="Tìm chính sách đổi size, trả hàng, hoàn tiền. Dùng khi khách hỏi quy định hoặc điều kiện; không dùng để tìm sản phẩm." />
             </FormField>
           </div>
         </Panel>
 
-        <Panel title={`File thuộc scope (${documentIds.length})`}>
+        <Panel title={`File thuộc scope (${documentIds.length})`} info="Sản phẩm không nằm trong scope: AI tìm sản phẩm bằng tool riêng và luôn lấy giá, tồn kho từ cơ sở dữ liệu.">
           <div className="space-y-4 px-5 pb-5 sm:px-6">
             {documents.length === 0
               ? <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có tài liệu nào. Upload PDF ở tab <Link className="text-brand-500 hover:underline" href="/admin/knowledge?tab=files">Tài liệu</Link> rồi quay lại đây.</p>
@@ -105,11 +106,10 @@ export function ScopeForm({ scope, documents }: { scope?: ScopeFormScope; docume
               ))}</ul>}
             <label className="flex items-start gap-3">
               <Switch checked={includeSystemPolicy} onCheckedChange={setIncludeSystemPolicy} aria-label="Gồm chính sách giao hàng của hệ thống" />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Gồm chính sách giao hàng hiện hành
-                <span className="block text-theme-xs text-gray-500 dark:text-gray-400">Phí giao hàng và ngưỡng miễn phí do hệ thống tự sinh từ Cài đặt (không phải file), luôn đúng với giá trị đang áp dụng.</span>
+              <span className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">Gồm chính sách giao hàng hiện hành
+                <InfoTip>Phí giao hàng và ngưỡng miễn phí do hệ thống tự sinh từ Cài đặt (không phải file), luôn đúng với giá trị đang áp dụng.</InfoTip>
               </span>
             </label>
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Sản phẩm không nằm trong scope: AI tìm sản phẩm bằng tool riêng và luôn lấy giá, tồn kho từ cơ sở dữ liệu.</p>
           </div>
         </Panel>
 
@@ -123,19 +123,18 @@ export function ScopeForm({ scope, documents }: { scope?: ScopeFormScope; docume
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="lg" disabled={busy}>{scope ? 'Lưu thay đổi' : 'Tạo scope'}</Button>
-          <Link href="/admin/knowledge"><Button type="button" variant="ghost" size="lg">Quay lại</Button></Link>
-          {scope && <Button type="button" variant="ghost" size="lg" className="ml-auto text-red-500 hover:text-red-600" disabled={busy} onClick={() => void remove()}>Xóa scope</Button>}
+          <Button type="submit" size="sm" disabled={busy}>{scope ? 'Lưu thay đổi' : 'Tạo scope'}</Button>
+          <Link href="/admin/knowledge"><Button type="button" variant="ghost" size="sm">Quay lại</Button></Link>
+          {scope && <Button type="button" variant="ghost" size="sm" className="ml-auto text-red-500 hover:text-red-600" disabled={busy} onClick={() => void remove()}>Xóa scope</Button>}
         </div>
       </form>
 
       {scope && (
-        <Panel title="Thử truy xuất trong scope">
+        <Panel title="Thử truy xuất trong scope" info="Chạy đúng phép tìm mà tool này thực hiện, dựa trên file đã lưu của scope. Lưu thay đổi trước khi thử.">
           <div className="space-y-4 px-5 pb-5 sm:px-6">
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Chạy đúng phép tìm mà tool này thực hiện, dựa trên file đã lưu của scope. Lưu thay đổi trước khi thử.</p>
             <form className="flex gap-2" onSubmit={test}>
               <Input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ví dụ: Đổi size trong bao nhiêu ngày?" />
-              <Button type="submit" size="lg">Chạy</Button>
+              <Button size="sm" type="submit">Chạy</Button>
             </form>
             {hits && (hits.length
               ? <ul className="space-y-1 text-sm text-gray-700 dark:text-gray-300">{hits.map((hit) => <li key={hit.source_id}><code className="text-xs">{hit.source_id}</code> · {hit.title} <span className="text-gray-500">({hit.similarity.toFixed(3)})</span></li>)}</ul>

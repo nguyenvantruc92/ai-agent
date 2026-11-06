@@ -33,7 +33,8 @@ function Switch({ className, size = "default", ...props }: SwitchProps) {
         "bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600",
         "data-checked:bg-brand-500 data-checked:hover:bg-brand-600 dark:data-checked:bg-brand-500 dark:data-checked:hover:bg-brand-600",
         "data-disabled:cursor-not-allowed data-disabled:bg-gray-100 data-disabled:hover:bg-gray-100 dark:data-disabled:bg-gray-800 dark:data-disabled:hover:bg-gray-800",
-        "data-disabled:data-checked:bg-gray-100 data-disabled:data-checked:hover:bg-gray-100 dark:data-disabled:data-checked:bg-gray-800 dark:data-disabled:data-checked:hover:bg-gray-800",
+        // Locked but on: keep the brand colour (paler) so it still reads as "on", not as "off".
+        "data-disabled:data-checked:bg-brand-500/50 data-disabled:data-checked:hover:bg-brand-500/50 dark:data-disabled:data-checked:bg-brand-500/40 dark:data-disabled:data-checked:hover:bg-brand-500/40",
         "group-has-focus-visible/field-label:ring-0 after:absolute after:-inset-x-3 after:-inset-y-2",
         "aria-invalid:ring-error-500/20 dark:aria-invalid:ring-error-500/40 aria-invalid:ring-3",
         currentVariant.root,

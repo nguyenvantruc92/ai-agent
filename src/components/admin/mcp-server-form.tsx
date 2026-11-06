@@ -126,7 +126,7 @@ export function McpServerForm({ server, builtinTools = [] }: { server?: ServerVi
             {authType === 'header' && <FormField label="Tên header"><Input required maxLength={60} className="font-mono" value={headerName} placeholder="x-api-key" onChange={(event) => setHeaderName(event.target.value)} /></FormField>}
             {authType !== 'none' && (
               <FormField label={authType === 'bearer' ? 'Token' : 'Giá trị header'}
-                hint={server?.has_secret && server.auth_type === authType ? `Đã lưu (kết thúc …${server.auth_hint ?? '****'}). Để trống để giữ nguyên.` : 'Được mã hóa khi lưu và không hiển thị lại.'}>
+                hint="Được mã hóa khi lưu và không hiển thị lại." note={server?.has_secret && server.auth_type === authType ? `Đã lưu (kết thúc …${server.auth_hint ?? '****'}). Để trống để giữ nguyên.` : undefined}>
                 <Input type="password" autoComplete="off" maxLength={2000} value={secret} placeholder={server?.has_secret && server.auth_type === authType ? '••••••••' : ''} onChange={(event) => setSecret(event.target.value)} />
               </FormField>
             )}
@@ -135,15 +135,13 @@ export function McpServerForm({ server, builtinTools = [] }: { server?: ServerVi
       )}
 
       <Panel title={`Tool (đã chọn ${pickedCount}/${options.length})`}
+        info={builtin
+          ? 'Tick tool mà các Agent dùng MCP server này được phép gọi. Cách chạy của từng tool (khách xác nhận, nhân viên duyệt…) cố định trong hệ thống.'
+          : 'Bấm “Lấy danh sách tool” để kết nối và tải tool của server (chưa lưu gì), tick các tool cần dùng rồi bấm lưu. Agent chọn MCP server này sẽ dùng tất cả tool đã tick. Tool có thể gây thay đổi nên đánh dấu “cần nhân viên duyệt”: Agent dừng chờ duyệt ở trang Phê duyệt trước khi gọi.'}
         action={builtin ? <Badge color="gray" size="sm">Tool có sẵn của hệ thống</Badge> : (
           <Button type="button" variant="outline" size="sm" disabled={fetching || !url.trim()} onClick={() => void fetchTools()}>{fetching ? 'Đang lấy…' : 'Lấy danh sách tool'}</Button>
         )}>
         <div className="space-y-3 pb-5">
-          <p className="px-5 text-theme-xs text-gray-500 sm:px-6 dark:text-gray-400">
-            {builtin
-              ? 'Tick tool mà các Agent dùng MCP server này được phép gọi. Cách chạy của từng tool (khách xác nhận, nhân viên duyệt…) cố định trong hệ thống.'
-              : 'Bấm “Lấy danh sách tool” để kết nối và tải tool của server (chưa lưu gì), tick các tool cần dùng rồi bấm lưu. Agent chọn MCP server này sẽ dùng tất cả tool đã tick. Tool có thể gây thay đổi nên đánh dấu “cần nhân viên duyệt”: Agent dừng chờ duyệt ở trang Phê duyệt trước khi gọi.'}
-          </p>
           {fetchError && <p className="mx-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-600 sm:mx-6 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">{fetchError}</p>}
           {stale && <p className="mx-5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-theme-xs text-amber-900 sm:mx-6 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">Bạn đã đổi địa chỉ hoặc xác thực sau lần lấy tool trước. Bấm “Lấy danh sách tool” lại để chắc chắn danh sách còn đúng; khi lưu hệ thống cũng kiểm tra lại.</p>}
           {dropped.length > 0 && <p className="mx-5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-theme-xs text-amber-900 sm:mx-6 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">Các tool đã chọn không còn trên server nên bị bỏ chọn: {dropped.join(', ')}.</p>}
@@ -192,18 +190,17 @@ export function McpServerForm({ server, builtinTools = [] }: { server?: ServerVi
       </Panel>
 
       {server && server.agents.length > 0 && (
-        <Panel title="Agent đang dùng server này">
+        <Panel title="Agent đang dùng server này" info="Đổi lựa chọn tool ở đây áp dụng ngay cho các Agent này.">
           <div className="space-y-2 px-5 pb-5 sm:px-6">
             <span className="inline-flex flex-wrap gap-1.5">{server.agents.map((agent) => <Link key={agent.id} href={`/admin/agents/${agent.id}`}><Badge color="primary" size="sm">{agent.name}</Badge></Link>)}</span>
-            <p className="text-theme-xs text-gray-500 dark:text-gray-400">Đổi lựa chọn tool ở đây áp dụng ngay cho các Agent này.</p>
           </div>
         </Panel>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" size="lg" disabled={saving || fetching}>{saving ? 'Đang lưu…' : server ? 'Lưu thay đổi' : 'Thêm server'}</Button>
-        {server && !builtin && <Button type="button" variant="outline" size="lg" disabled={saving || fetching} onClick={() => void checkConnection()}>Kiểm tra kết nối</Button>}
-        <Link href="/admin/mcp-servers"><Button type="button" variant="ghost" size="lg">Quay lại</Button></Link>
+        <Button type="submit" size="sm" disabled={saving || fetching}>{saving ? 'Đang lưu…' : server ? 'Lưu thay đổi' : 'Thêm server'}</Button>
+        {server && !builtin && <Button type="button" variant="outline" size="sm" disabled={saving || fetching} onClick={() => void checkConnection()}>Kiểm tra kết nối</Button>}
+        <Link href="/admin/mcp-servers"><Button type="button" variant="ghost" size="sm">Quay lại</Button></Link>
       </div>
       {builtin && <p className="text-theme-sm text-gray-500 dark:text-gray-400">MCP server có sẵn của hệ thống: chỉ chọn được tool. Không sửa, tắt hoặc xóa được; địa chỉ lấy từ biến môi trường MCP_URL.</p>}
       {!builtin && !server && <p className="text-theme-xs text-gray-500 dark:text-gray-400">Chưa chọn tool nào cũng lưu được, nhưng Agent chỉ chọn được server đã có ít nhất một tool.</p>}

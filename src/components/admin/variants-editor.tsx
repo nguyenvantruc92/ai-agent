@@ -38,7 +38,7 @@ export function VariantsEditor({ value, onChange }: { value: VariantDraft[]; onC
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <FormField label="Size (cách nhau bằng dấu phẩy)"><Input value={sizes} onChange={(e) => setSizes(e.target.value)} placeholder="S, M, L, XL" /></FormField>
         <FormField label="Màu"><Input value={colors} onChange={(e) => setColors(e.target.value)} placeholder="Trắng, Xanh navy" /></FormField>
-        <Button type="button" variant="outline" size="lg" onClick={generate}>Tạo ma trận</Button>
+        <Button size="sm" type="button" variant="outline" onClick={generate}>Tạo ma trận</Button>
       </div>
       {value.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">

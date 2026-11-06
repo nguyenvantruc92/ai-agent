@@ -1,6 +1,7 @@
 import { env } from '@/lib/env';
 
-export type ModelOption = { id: string; label: string };
+/** `aliases`: other accepted IDs with the same label (e.g. `gpt-4.1` and its dated snapshot), shown as one choice. */
+export type ModelOption = { id: string; label: string; aliases?: string[] };
 
 /** Models supported by this agent's Responses API + function-calling integration. */
 const builtInModels: ModelOption[] = [
@@ -30,6 +31,16 @@ export function modelLabel(id: string) {
   return builtInModels.find((model) => model.id === id)?.label ?? snapshotLabels[id] ?? id;
 }
 
+/** One option per label. When an alias and a dated snapshot share a label, the configured/extra ID (usually what agents already store) wins. */
 export function modelOptions(): ModelOption[] {
-  return allowedModels().map((id) => ({ id, label: modelLabel(id) }));
+  const builtIn = new Set(builtInModels.map((model) => model.id));
+  const byLabel = new Map<string, ModelOption>();
+  for (const id of allowedModels()) {
+    const label = modelLabel(id);
+    const existing = byLabel.get(label);
+    if (!existing) { byLabel.set(label, { id, label }); continue; }
+    const preferNew = builtIn.has(existing.id) && !builtIn.has(id);
+    byLabel.set(label, preferNew ? { id, label, aliases: [...(existing.aliases ?? []), existing.id] } : { ...existing, aliases: [...(existing.aliases ?? []), id] });
+  }
+  return [...byLabel.values()];
 }

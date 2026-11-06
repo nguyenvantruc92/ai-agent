@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from '@/db/client';
 import { builtinToolNames } from '@/features/agent/tools';
-import { defaultAgentInstructions } from '@/features/ai/prompt';
+import { defaultAgentInstructions, defaultAgentRules } from '@/features/ai/prompt';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
@@ -25,6 +25,9 @@ export async function seedAiDefaults() {
       ON CONFLICT (is_builtin) WHERE is_builtin DO UPDATE SET url = EXCLUDED.url, updated_at = now() WHERE mcp_servers.url <> EXCLUDED.url
     `;
     const [builtin] = await tx<{ id: string }[]>`SELECT id FROM mcp_servers WHERE is_builtin`;
+
+    // Agents from before prompts lived entirely in `instructions` relied on a rules block added in code; give it to them once.
+    await tx`UPDATE ai_agents SET instructions = btrim(instructions, E'\n ') || ${`\n\n${defaultAgentRules}`}, legacy_prompt = false, updated_at = now() WHERE legacy_prompt`;
 
     const [{ count }] = await tx<{ count: number }[]>`SELECT count(*)::int AS count FROM ai_agents`;
     if (count > 0) return;

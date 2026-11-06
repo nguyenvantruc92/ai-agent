@@ -8,7 +8,7 @@ import type { VariantProps } from "class-variance-authority";
 function Button({
   className,
   variant = "default",
-  size = "default",
+  size = "sm",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (

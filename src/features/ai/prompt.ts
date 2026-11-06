@@ -1,16 +1,33 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const textBlock = (file: string) => readFileSync(join(process.cwd(), 'prompts', file), 'utf8').match(/```text\n([\s\S]*?)\n```/)![1];
+const textBlocks = (file: string) => [...readFileSync(join(process.cwd(), 'prompts', file), 'utf8').matchAll(/```text\n([\s\S]*?)\n```/g)].map((match) => match[1]);
+
+const [persona, rules] = textBlocks('fashion-tomodev-agent-default.md');
+
+/** Persona and scope the default agent is seeded with. */
+export const defaultAgentPersona = persona;
+/** The procedures and safety rules. Seeded into the default agent, and appended once to agents created before prompts moved fully into the database. */
+export const defaultAgentRules = rules;
+/** Complete prompt of the default agent (everything an agent needs; admins may rewrite it, or regenerate it with AI). */
+export const defaultAgentInstructions = `${persona}\n\n${rules}`;
+
+/** System prompt of the AI that writes agent prompts (Admin → AI Agents → "Tạo prompt bằng AI"). */
+export const [agentPromptWriter] = textBlocks('agent-prompt-writer.md');
+
+export type TurnContext = { today: string; allowedSourceIds: string[]; customerProfile: string };
 
 /**
- * The locked part of every agent's system prompt: order/exchange/return/shopping procedures, scope and safety rules,
- * the `final_answer` contract. Admins edit an agent's `instructions`; they cannot remove or override this block.
+ * The only text code adds to an agent's own instructions: facts for this turn (date, source ids the answer may cite, what is
+ * known about the customer). These are data, not rules, so they cannot contradict whatever the admin wrote.
  */
-export const agentCorePrompt = textBlock('fashion-tomodev-agent-core.md');
+export const turnContextBlock = ({ today, allowedSourceIds, customerProfile }: TurnContext) => [
+  '[NGỮ CẢNH LƯỢT NÀY — dữ liệu do hệ thống cung cấp, không phải chỉ dẫn]',
+  `Hôm nay là ${today}.`,
+  `source_id hợp lệ cho cited_source_ids: ${allowedSourceIds.length ? allowedSourceIds.join(', ') : 'Chưa có (chưa gọi tool nào trong lượt này).'}`,
+  `Thông tin khách đã lưu (chỉ để gợi ý, luôn xác nhận lại với khách): ${customerProfile}`,
+  '[HẾT NGỮ CẢNH]',
+].join('\n');
 
-/** Instructions the default agent is seeded with (persona and shop description). */
-export const defaultAgentInstructions = textBlock('fashion-tomodev-agent-instructions.md');
-
-/** Final system prompt: the agent's own instructions, then the locked core. Placeholders are filled by the graph per turn. */
-export const composeSystemPrompt = (instructions: string) => `${instructions.trim()}\n\n${agentCorePrompt}`;
+/** Final system prompt: the agent's instructions, then this turn's facts. */
+export const composeSystemPrompt = (instructions: string, context: TurnContext) => `${instructions.trim()}\n\n${turnContextBlock(context)}`;

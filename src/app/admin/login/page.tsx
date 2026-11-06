@@ -29,7 +29,7 @@ export default function LoginPage() {
           </div>
           <FormField label="Mật khẩu"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus autoComplete="current-password" required /></FormField>
           {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
-          <Button type="submit" size="lg" className="w-full" disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</Button>
+          <Button type="submit" size="sm" className="w-full" disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</Button>
         </form>
       </div>
       <div className="relative hidden items-center justify-center overflow-hidden bg-brand-950 lg:flex">

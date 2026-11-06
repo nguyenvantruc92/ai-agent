@@ -11,6 +11,10 @@ export type AgentRow = {
   max_tokens: number; max_steps: number; max_tool_calls: number;
   /** NULL = env default (see migration 0016). */
   summary_enabled: boolean | null; summarize_after_messages: number | null; keep_recent_messages: number | null;
+  /** Tools/scopes the prompt was generated for (see prompt-signature.ts); NULL = written by hand. */
+  prompt_tools_signature: string | null;
+  /** Created before prompts moved fully into `instructions`; the next seed run adds the default rules once. */
+  legacy_prompt: boolean;
   is_active: boolean; is_default: boolean; archived_at: string | null; created_at: string; updated_at: string;
 };
 
@@ -115,12 +119,25 @@ type ServerToolsRow = { id: string; name: string; slug: string; is_builtin: bool
  * lists, with the "needs staff approval" flag set on the server.
  */
 export async function agentServerTools(agentId: string): Promise<{ builtin: string[]; externals: ExternalToolSpec[] }> {
-  const rows = await sql<ServerToolsRow[]>`
+  return serverTools(await sql<ServerToolsRow[]>`
     SELECT s.id, s.name, s.slug, s.is_builtin, s.selected_tools, s.tools_cache
     FROM agent_mcp_servers m JOIN mcp_servers s ON s.id = m.mcp_server_id
     WHERE m.agent_id = ${agentId} AND s.enabled
     ORDER BY s.is_builtin DESC, s.slug
-  `;
+  `);
+}
+
+/** The same resolution for servers picked in the agent form but not saved yet (used to write a prompt for them). */
+export async function serverToolsForIds(serverIds: string[]) {
+  if (!serverIds.length) return { builtin: [], externals: [] };
+  return serverTools(await sql<ServerToolsRow[]>`
+    SELECT s.id, s.name, s.slug, s.is_builtin, s.selected_tools, s.tools_cache
+    FROM mcp_servers s WHERE s.id = ANY(${sql.array(serverIds, 2950)}::uuid[]) AND s.enabled
+    ORDER BY s.is_builtin DESC, s.slug
+  `);
+}
+
+function serverTools(rows: ServerToolsRow[]): { builtin: string[]; externals: ExternalToolSpec[] } {
   const known: readonly string[] = builtinToolNames;
   const taken = new Set<string>();
   const builtin: string[] = [];

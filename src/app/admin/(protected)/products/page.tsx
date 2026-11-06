@@ -59,12 +59,12 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         <form className="flex flex-wrap gap-2">
           {query.status && <input type="hidden" name="status" value={query.status} />}
           <div className="relative"><SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-gray-400" />
-            <input name="q" defaultValue={query.q} placeholder="Tìm theo tên hoặc mã…" className="h-11 w-60 rounded-[10px] border border-gray-300 bg-white pr-4 pl-11 text-sm text-gray-800 shadow-theme-xs outline-hidden placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" /></div>
+            <input name="q" defaultValue={query.q} placeholder="Tìm theo tên hoặc mã…" className="h-9 w-60 rounded-lg border border-gray-300 bg-white pr-4 pl-11 text-sm text-gray-800 shadow-theme-xs outline-hidden placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" /></div>
           <NativeSelect name="categoryId" defaultValue={query.categoryId ?? ''} className="w-48" aria-label="Danh mục">
             <option value="">Tất cả danh mục</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </NativeSelect>
-          <Button type="submit" variant="outline" size="lg">Lọc</Button>
+          <Button size="sm" type="submit" variant="outline">Lọc</Button>
           {(query.q || query.categoryId) && <Link href={query.status ? `/admin/products?status=${query.status}` : '/admin/products'} className={buttonVariants({ variant: 'ghost', size: 'lg' })}>Xóa lọc</Link>}
         </form>
       </div>

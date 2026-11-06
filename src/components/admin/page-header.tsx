@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { InfoTip } from '@/components/admin-ui/info-tip';
 import { cn } from '@/lib/cn';
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
@@ -38,11 +39,12 @@ export function MetricCard({ label, value, hint, icon, tone = 'neutral', href }:
 }
 
 /** Bordered section with a title row; children bring their own padding when they are lists or tables. */
-export function Panel({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
+/** `info` is longer help for the whole section, shown in a bubble from the "!" icon after the title. */
+export function Panel({ title, info, action, children, className }: { title: string; info?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={cn('overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3', className)}>
       <header className="flex items-center justify-between gap-3 px-5 py-4 sm:px-6">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">{title}</h2>
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800 dark:text-white/90">{title}{info && <InfoTip className="size-[18px]">{info}</InfoTip>}</h2>
         {action}
       </header>
       {children}

@@ -6,13 +6,17 @@ import { allowedModels } from '@/features/ai/models';
 import { HttpError } from '@/lib/http';
 
 const uuid = z.string().uuid('ID không hợp lệ.');
+export const MAX_INSTRUCTIONS = 12_000;
 
 export const agentInput = z.object({
   name: z.string().trim().min(2, 'Tên cần ít nhất 2 ký tự.').max(80, 'Tên tối đa 80 ký tự.'),
   slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,48}$/, 'Mã (slug) gồm chữ thường, số, dấu gạch ngang; 2–49 ký tự.'),
-  // The placeholders ({{today}}, ...) belong to the locked core: one typed here would be filled instead of the core's own.
-  instructions: z.string().trim().min(20, 'Hướng dẫn cần ít nhất 20 ký tự.').max(6000, 'Hướng dẫn tối đa 6000 ký tự.')
-    .refine((value) => !/\{\{|\}\}/.test(value), 'Hướng dẫn không được chứa {{ hoặc }} (dành cho hệ thống).'),
+  /** What the admin wants the agent to be; also the brief for "Tạo prompt bằng AI". */
+  description: z.string().trim().max(2000, 'Mô tả tối đa 2000 ký tự.').default(''),
+  /** The agent's whole system prompt (written by hand or generated). Code only adds this turn's facts after it. */
+  instructions: z.string().trim().min(20, 'Prompt cần ít nhất 20 ký tự.').max(MAX_INSTRUCTIONS, `Prompt tối đa ${MAX_INSTRUCTIONS} ký tự.`),
+  /** Set when the prompt was generated for the current tools (see prompt-signature.ts); null = hand-written. */
+  promptToolsSignature: z.string().max(4000).nullable().default(null),
   model: z.string().trim().min(1),
   temperature: z.number().min(0, 'Temperature từ 0 đến 2.').max(2, 'Temperature từ 0 đến 2.'),
   maxTokens: z.number().int().min(1).max(32_768).default(500),
@@ -71,9 +75,9 @@ export async function createAgent(input: AgentInput) {
   const id = randomUUID();
   await sql.begin(async (tx) => {
     await tx`
-      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_tokens, max_steps, max_tool_calls, summary_enabled, summarize_after_messages, keep_recent_messages, is_active, is_default)
-      VALUES (${id}, ${input.name}, ${input.slug}, '', ${input.instructions}, ${input.model}, ${input.temperature}, ${input.maxTokens}, ${input.maxSteps}, ${input.maxToolCalls},
-        ${input.summaryEnabled}, ${input.summarizeAfterMessages}, ${input.keepRecentMessages}, ${input.isActive}, false)
+      INSERT INTO ai_agents (id, name, slug, description, instructions, model, temperature, max_tokens, max_steps, max_tool_calls, summary_enabled, summarize_after_messages, keep_recent_messages, prompt_tools_signature, is_active, is_default)
+      VALUES (${id}, ${input.name}, ${input.slug}, ${input.description}, ${input.instructions}, ${input.model}, ${input.temperature}, ${input.maxTokens}, ${input.maxSteps}, ${input.maxToolCalls},
+        ${input.summaryEnabled}, ${input.summarizeAfterMessages}, ${input.keepRecentMessages}, ${input.promptToolsSignature}, ${input.isActive}, false)
     `;
     await writeBindings(tx as never, id, input);
   });
@@ -88,9 +92,9 @@ export async function updateAgent(id: string, input: AgentInput) {
   await validateBindings(input);
   await sql.begin(async (tx) => {
     await tx`
-      UPDATE ai_agents SET name = ${input.name}, slug = ${input.slug}, instructions = ${input.instructions}, model = ${input.model},
+      UPDATE ai_agents SET name = ${input.name}, slug = ${input.slug}, description = ${input.description}, instructions = ${input.instructions}, model = ${input.model},
         temperature = ${input.temperature}, max_tokens = ${input.maxTokens}, max_steps = ${input.maxSteps}, max_tool_calls = ${input.maxToolCalls},
-        summary_enabled = ${input.summaryEnabled}, summarize_after_messages = ${input.summarizeAfterMessages}, keep_recent_messages = ${input.keepRecentMessages}, is_active = ${input.isActive}, updated_at = now()
+        summary_enabled = ${input.summaryEnabled}, summarize_after_messages = ${input.summarizeAfterMessages}, keep_recent_messages = ${input.keepRecentMessages}, prompt_tools_signature = ${input.promptToolsSignature}, is_active = ${input.isActive}, updated_at = now()
       WHERE id = ${id}
     `;
     await writeBindings(tx as never, id, input);

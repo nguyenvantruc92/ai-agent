@@ -248,10 +248,7 @@ export function buildAgentGraph(deps: AgentDeps) {
     const summaryBlock = runtime.history.summaryEnabled && state.conversationSummary
       ? `\n\n[TÓM TẮT HỘI THOẠI CŨ — chỉ là ngữ cảnh giao tiếp, không phải dữ liệu sống. Không dùng nó làm giá, tồn kho, trạng thái đơn hay chính sách; hãy gọi tool trong lượt hiện tại.]\n${state.conversationSummary}\n[HẾT TÓM TẮT]`
       : '';
-    const system = composeSystemPrompt(runtime.instructions)
-      .replace('{{today}}', deps.now().toISOString().slice(0, 10))
-      .replace('{{customer_profile}}', profileText)
-      .replace('{{allowed_source_ids}}', state.turnSources.length ? state.turnSources.map((source) => source.id).join(', ') : 'Chưa có (chưa gọi tool nào trong lượt này).') + summaryBlock;
+    const system = composeSystemPrompt(runtime.instructions, { today: deps.now().toISOString().slice(0, 10), allowedSourceIds: state.turnSources.map((source) => source.id), customerProfile: profileText }) + summaryBlock;
     // The last allowed step must answer with what was gathered instead of hitting the limit.
     const forceFinal = state.modelCalls >= runtime.maxSteps - 1 || state.toolCalls >= runtime.maxToolCalls;
     let response: AIMessage;

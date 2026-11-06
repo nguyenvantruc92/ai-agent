@@ -31,6 +31,14 @@ Trợ lý tiếng Việt cho cửa hàng thời trang nam:
 
 4. (Tùy chọn) Mở URL demo qua Cloudflare Tunnel: đặt `CLOUDFLARE_TUNNEL_TOKEN` trong `.env` rồi chạy `docker compose --profile tunnel up -d`.
 
+### Chế độ phát triển (sửa code là UI đổi ngay, không build lại)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d web worker mcp
+```
+
+`src/` và `prompts/` được mount từ máy host: web chạy `next dev` (lưu file, trình duyệt cập nhật sau khoảng 1-2 giây), worker và mcp chạy `tsx watch` (tự khởi động lại khi lưu). Chỉ cần `docker compose build` khi đổi `package.json`, lockfile hoặc file cấu hình (`next.config.ts`, `tsconfig.json`, `postcss.config.mjs`); migration mới hoặc đổi cấu hình thì `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart web`. Docker trên macOS/Windows không chuyển sự kiện đổi file vào container: đặt `WATCHPACK_POLLING=true` trong `.env`. Quay lại chế độ build như production: `docker compose up -d --build web worker mcp` (không có `-f docker-compose.dev.yml`).
+
 ## Thử Agent (Week 7)
 
 1. Trong khung chat, gửi: `Đơn FT-2026-1001 của tôi có áo sơ mi SM-001 bị rộng, tôi muốn đổi sang size L.` Agent hỏi số điện thoại đặt hàng (đơn demo: `0900` + 6 số cuối của mã đơn, ví dụ `FT-2026-1001` → `0900261001`); sau khi xác minh, agent tra đơn, sản phẩm, chính sách rồi báo đang chờ duyệt; ô nhập bị khóa.
@@ -38,6 +46,8 @@ Trợ lý tiếng Việt cho cửa hàng thời trang nam:
 3. Đặt lại dữ liệu đơn demo (ngày giao tính lại theo hôm nay, xóa yêu cầu/approval): `docker compose exec web pnpm db:reset-orders`.
 
 ## Thử Agent mua hàng (Giai đoạn 6)
+
+> Kịch bản test đầy đủ từ tìm sản phẩm đến tạo/hủy đơn (có số liệu, mốc miễn phí giao hàng, các trường hợp lỗi và SQL kiểm tra): [docs/test-scenario-mua-hang.md](docs/test-scenario-mua-hang.md).
 
 Agent cũng bán hàng qua MCP: `search_products`, `view_cart`, `add_to_cart`, `set_cart_quantity`, `checkout`, `cancel_order`. Giỏ hàng là giỏ của chính trình duyệt đang chat (server tra khách từ `thread_id`, model không tự truyền danh tính).
 
