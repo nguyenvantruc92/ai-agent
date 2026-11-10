@@ -1,3 +1,4 @@
-import ChatClient from '@/components/chat-client';
+import { redirect } from 'next/navigation';
 
-export default function ChatPage() { return <ChatClient />; }
+// The chat now lives in a floating widget on every storefront page; keep the old URL working.
+export default function ChatPage() { redirect('/?chat=1'); }

@@ -1,5 +1,274 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/forms";
+
+/* Admin (TailAdmin) dark mode: toggled by a `dark` class on <html> while an admin page is open. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens (Tailwind v4). Storefront: clean white, deep-indigo ink, a vivid violet brand colour
+ * with a pink accent, and rose reserved for sale/price drops. (The admin area has its own TailAdmin palette below.)
+ * Utilities generated from these: bg-paper, text-ink, border-line, bg-brand, text-sale, font-display, ...
+ */
+@theme {
+  --color-paper: #ffffff;
+  --color-surface: #ffffff;
+  --color-sand: #f5f1ff;
+  --color-line: #e9e4f7;
+  --color-ink: #1d1738;
+  --color-ink-soft: #544e72;
+  --color-ink-muted: #8b86a8;
+  --color-brand: #7c3aed;
+  --color-brand-hover: #6d28d9;
+  --color-brand-soft: #f1e9ff;
+  --color-accent: #ec4899;
+  --color-sale: #e11d48;
+  --color-sale-soft: #ffe4ea;
+  --color-warn-soft: #fef3c7;
+  --color-warn: #b45309;
+
+  /* No webfont download: works offline and in Docker builds. Swap for next/font later if wanted. */
+  --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 1rem;
+  --shadow-card: 0 1px 2px rgb(60 20 140 / 0.06), 0 14px 34px -16px rgb(91 33 182 / 0.28);
+
+  /* ───────── Admin (TailAdmin, MIT) tokens — additive, they never replace the storefront ones ───────── */
+  --breakpoint-2xsm: 375px;
+  --breakpoint-xsm: 425px;
+  --breakpoint-3xl: 2000px;
+
+  --text-heading-six: 24px;
+  --text-heading-six--line-height: 32px;
+  --text-title-lg: 20px;
+  --text-title-lg--line-height: 30px;
+  --text-title-sm: 18px;
+  --text-title-sm--line-height: 28px;
+  --text-theme-xl: 20px;
+  --text-theme-xl--line-height: 30px;
+  --text-theme-sm: 14px;
+  --text-theme-sm--line-height: 20px;
+  --text-theme-xs: 12px;
+  --text-theme-xs--line-height: 18px;
+
+  --color-brand-50: #ecf3ff;
+  --color-brand-100: #dde9ff;
+  --color-brand-200: #c2d6ff;
+  --color-brand-300: #9cb9ff;
+  --color-brand-400: #7592ff;
+  --color-brand-500: #465fff;
+  --color-brand-600: #3641f5;
+  --color-brand-700: #2a31d8;
+  --color-brand-800: #252dae;
+  --color-brand-900: #262e89;
+  --color-brand-950: #161950;
+
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 1px 3px 0px rgba(16, 24, 40, 0.1), 0px 1px 2px 0px rgba(16, 24, 40, 0.06);
+  --shadow-theme-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-theme-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-theme-xl: 0px 20px 24px -4px rgba(16, 24, 40, 0.08), 0px 8px 8px -4px rgba(16, 24, 40, 0.03);
+  --shadow-focus-ring: 0px 0px 0px 4px rgba(70, 95, 255, 0.12);
+  --shadow-tooltip: 0px 4px 6px -2px rgba(16, 24, 40, 0.05), -8px 0px 20px 8px rgba(16, 24, 40, 0.05);
+
+  --z-index-1: 1;
+  --z-index-9: 9;
+  --z-index-99: 99;
+  --z-index-999: 999;
+  --z-index-9999: 9999;
+  --z-index-99999: 99999;
+  --z-index-999999: 999999;
+
+  --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+
+  @keyframes caret-blink {
+    0%, 70%, 100% { opacity: 1; }
+    20%, 50% { opacity: 0; }
+  }
+}
+
+/* Tailwind v4 defaults borders to currentColor; keep the soft warm line colour for every bare `border`. */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button { border-color: var(--color-line); }
+  /* Headings: bold sans with tight tracking (a utility such as font-semibold still wins). */
+  .font-display { font-weight: 700; letter-spacing: -0.02em; }
+}
 
 :root { color-scheme: light; }
-body { margin: 0; background: #fafaf9; color: #1c1917; font-family: Arial, Helvetica, sans-serif; }
-button, input, textarea { font: inherit; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+
+@keyframes chat-pop { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* @tailwindcss/forms paints checked radios/checkboxes with `color`, which defaults to blue. */
+@layer base {
+  [type='checkbox'], [type='radio'] { color: var(--color-brand); }
+}
+
+/* ───────── Admin (TailAdmin, MIT) sidebar/scrollbar utilities ───────── */
+@utility menu-item {
+  @apply relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium;
+}
+
+@utility menu-item-active {
+  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/12 dark:text-brand-400;
+}
+
+@utility menu-item-inactive {
+  @apply text-gray-700 group-hover:text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-gray-300;
+}
+
+@utility menu-item-icon {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400;
+}
+
+@utility menu-item-icon-active {
+  @apply text-brand-500 dark:text-brand-400;
+}
+
+@utility menu-item-icon-inactive {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+}
+
+@utility menu-item-arrow {
+  @apply relative;
+}
+
+@utility menu-item-arrow-active {
+  @apply rotate-180 text-brand-500 dark:text-brand-400;
+}
+
+@utility menu-item-arrow-inactive {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+}
+
+@utility menu-dropdown-item {
+  @apply relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium;
+}
+
+@utility menu-dropdown-item-active {
+  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/12 dark:text-brand-400;
+}
+
+@utility menu-dropdown-item-inactive {
+  @apply text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5;
+}
+
+@utility menu-dropdown-badge {
+  @apply block rounded-full px-2.5 py-0.5 text-xs font-medium text-green-600 uppercase dark:text-green-500;
+}
+
+@utility menu-dropdown-badge-active {
+  @apply bg-green-100 dark:bg-green-500/20;
+}
+
+@utility menu-dropdown-badge-inactive {
+  @apply bg-green-50 group-hover:bg-green-100 dark:bg-green-500/15 dark:group-hover:bg-green-500/20;
+}
+
+@utility menu-dropdown-badge-pro {
+  @apply block rounded-full px-2.5 py-0.5 text-xs font-medium text-brand-600 uppercase dark:text-brand-500;
+}
+
+@utility menu-dropdown-badge-pro-active {
+  @apply bg-brand-100 dark:bg-brand-500/20;
+}
+
+@utility menu-dropdown-badge-pro-inactive {
+  @apply bg-brand-50 group-hover:bg-brand-100 dark:bg-brand-500/15 dark:group-hover:bg-brand-500/20;
+}
+
+@utility no-scrollbar {
+  /* Chrome, Safari and Opera */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    @apply size-1.5;
+  }
+
+  &::-webkit-scrollbar-track {
+    @apply rounded-full;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gray-200 dark:bg-gray-700;
+  }
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-gray-700;
+}
+
+/* ───────── ApexCharts theming for light/dark ───────── */
+.apexcharts-tooltip.apexcharts-theme-light,
+.apexcharts-tooltip {
+  --apx-tt-border: var(--color-gray-200);
+  @apply gap-1 rounded-lg! border-gray-200! bg-white! p-3 shadow-theme-sm! dark:border-gray-800! dark:bg-gray-900!;
+}
+
+.dark .apexcharts-tooltip {
+  --apx-tt-bg: var(--color-gray-900);
+  --apx-tt-arrow-bg: var(--color-gray-900);
+  --apx-tt-border: var(--color-gray-800);
+}
+
+.apexcharts-tooltip-arrow {
+  @apply border-gray-200! bg-white! dark:border-gray-800! dark:bg-gray-900!;
+}
+
+.apexcharts-tooltip-marker {
+  @apply me-1.5 size-1.5;
+}
+.apexcharts-tooltip-series-group {
+  @apply p-0!;
+}
+.apexcharts-tooltip-y-group {
+  @apply p-0!;
+}
+.apexcharts-tooltip-title {
+  @apply mb-0! border-b-0! bg-transparent! p-0! text-[10px]! leading-4! text-gray-800! dark:text-white/90!;
+}
+.apexcharts-tooltip-text {
+  @apply text-xs! text-gray-700! dark:text-white/90!;
+}
+.apexcharts-tooltip-text-y-value {
+  @apply font-medium!;
+}
+
+.apexcharts-gridline {
+  @apply stroke-gray-100! dark:stroke-gray-800!;
+}
+#chartTwo .apexcharts-datalabels-group {
+  @apply -translate-y-24!;
+}
+#chartTwo .apexcharts-datalabels-group .apexcharts-text {
+  @apply fill-gray-800! font-semibold! dark:fill-white/90!;
+}
+
+/* Donut centre label: readable in both themes. */
+.apex-donut .apexcharts-datalabels-group .apexcharts-text {
+  @apply fill-gray-800! font-semibold! dark:fill-white/90!;
+}
+.apex-donut .apexcharts-datalabels-group .apexcharts-datalabel-label {
+  @apply fill-gray-500! font-normal! dark:fill-gray-400!;
+}

@@ -1,0 +1,47 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: fashion
+          POSTGRES_PASSWORD: fashion
+          POSTGRES_DB: fashion_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fashion -d fashion_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm must exist before setup-node can cache its store; the version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      # test:ci writes a JSON report and fails if any test was skipped, so DB tests can never silently drop out.
+      - run: pnpm test:ci
+        env:
+          REQUIRE_DB_TESTS: '1'
+          TEST_DATABASE_URL: postgres://fashion:fashion@localhost:5432/fashion_test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vitest-report
+          path: test-results/vitest.json
+          if-no-files-found: ignore

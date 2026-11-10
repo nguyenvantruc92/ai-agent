@@ -5,11 +5,13 @@ import type { RequestAction } from '@/features/orders/types';
 
 export const APPROVAL_EXPIRY_DAYS = 7;
 
+/** Exchange/return requests, or a call to an external MCP tool an admin marked as needing staff approval. */
+export type ApprovalAction = RequestAction | 'mcp_tool';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 export type ApprovalRow = {
   id: string;
   thread_id: string;
-  action: RequestAction;
+  action: ApprovalAction;
   payload: Record<string, string>;
   summary: string;
   source_ids: string[];
@@ -22,7 +24,7 @@ export type ApprovalRow = {
   expires_at: Date;
 };
 
-export type ApprovalInput = { threadId: string; action: RequestAction; payload: Record<string, string>; summary: string; sourceIds: string[]; idempotencyKey: string };
+export type ApprovalInput = { threadId: string; action: ApprovalAction; payload: Record<string, string>; summary: string; sourceIds: string[]; idempotencyKey: string };
 
 /** The subset of approval storage the graph needs; tests provide an in-memory version. */
 export type ApprovalStore = {

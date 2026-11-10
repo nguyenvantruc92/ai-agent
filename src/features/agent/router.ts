@@ -1,21 +1,15 @@
 import { isPromptInjection } from '@/features/chat/guardrails';
 import { smallTalkAnswer } from '@/features/chat/small-talk';
-import { isFollowUp } from '@/features/rag/query';
 
-export const orderCodePattern = /(?<![\p{L}\p{N}])FT-\d{4}-\d{4}(?![\p{L}\p{N}])/iu;
-const orderIntent = /(?<![\p{L}\p{N}])(?:đơn hàng|đơn của (?:tôi|mình|em|anh|chị)|mã đơn|tra đơn|kiểm tra đơn|(?:muốn|cần|xin|giúp|yêu cầu|tạo yêu cầu) (?:đổi|trả)|đổi giúp|trả lại hàng|hoàn hàng)(?![\p{L}\p{N}])/iu;
-
-export type Route = 'agent' | 'rag' | 'guard';
+export type Route = 'agent' | 'guard' | 'small_talk';
 
 /**
- * Rule-based routing without an LLM call: prompt injection is refused,
- * order/exchange/return intents go to the tool-calling agent, everything else
- * keeps the Week 6 RAG pipeline.
+ * The only checks made before the agent model runs, and neither calls a model: a prompt-injection attempt is refused,
+ * and a plain greeting gets a fixed reply. Everything else goes to the agent, which decides from the tools'
+ * names and descriptions which knowledge scope, product search or other tool to use.
  */
-export function chooseRoute(message: string, context: { orderId: string | null }): Route {
+export function precheckRoute(message: string): Route {
   if (isPromptInjection(message)) return 'guard';
-  if (smallTalkAnswer(message)) return 'rag';
-  if (orderCodePattern.test(message) || orderIntent.test(message)) return 'agent';
-  if (context.orderId && isFollowUp(message)) return 'agent';
-  return 'rag';
+  if (smallTalkAnswer(message)) return 'small_talk';
+  return 'agent';
 }

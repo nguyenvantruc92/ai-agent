@@ -15,12 +15,26 @@ export function detectPolicyTopics(message: string): PolicyTopic[] {
   return policyTopics.filter(([, pattern]) => pattern.test(message)).map(([topic]) => topic);
 }
 
-export const catalogCategories = ['Áo sơ mi', 'Áo polo', 'Áo thun', 'Áo khoác', 'Áo len', 'Quần chinos', 'Quần tây', 'Quần jeans', 'Quần jogger', 'Quần short', 'Phụ kiện'];
+/** Lower case without diacritics, so "ao thun" (typed without accents) matches "Áo thun". */
+export function foldVietnamese(value: string) {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('vi-VN').replace(/đ/g, 'd');
+}
 
-/** Category questions ("áo thun có không?") embed poorly, so they also get a category-filtered search. */
-export function detectCategory(message: string) {
-  const normalized = message.toLocaleLowerCase('vi-VN');
-  return catalogCategories.find((category) => word([category.toLocaleLowerCase('vi-VN')]).test(normalized));
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Category questions ("áo thun có không?") embed poorly, so they also get a category-filtered search.
+ * `categories` are the shop's category names (from the database); the returned name is one of them, unchanged.
+ * Longer names win, so "Quần jeans slim" is preferred over "Quần jeans" when both are in the question.
+ */
+export function detectCategory(message: string, categories: readonly string[]) {
+  const folded = foldVietnamese(message);
+  return [...categories]
+    .sort((a, b) => b.length - a.length)
+    .find((category) => {
+      const name = foldVietnamese(category).trim();
+      return name.length > 0 && word([escapeRegExp(name).replace(/\s+/g, '\\s+')]).test(folded);
+    });
 }
 
 export function isBroadCatalogQuestion(message: string) {

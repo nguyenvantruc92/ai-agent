@@ -4,15 +4,19 @@ export const REQUEST_WINDOW_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export type PolicyCheck =
-  | { ok: true; idempotencyKey: string; summary: string; existingRequestId?: string }
+  /** `proposal` is the canonical form (line selector filled in only when the order has several lines of the product). */
+  | { ok: true; idempotencyKey: string; summary: string; proposal: RequestProposal; existingRequestId?: string }
   | { ok: false; code: string; message: string };
 
 const normalizeSize = (value: string) => value.trim().toUpperCase().replace(/\s+/g, ' ');
 
 export function idempotencyKey(proposal: RequestProposal) {
   const base = `${proposal.orderId.toUpperCase()}:${proposal.productId.toUpperCase()}:${proposal.action}`;
-  return proposal.action === 'exchange_size' ? `${base}:${normalizeSize(proposal.requestedSize)}` : base;
+  const withSize = proposal.action === 'exchange_size' ? `${base}:${normalizeSize(proposal.requestedSize)}` : base;
+  return proposal.itemSize || proposal.itemColor ? `${withSize}:line:${normalizeSize(proposal.itemSize ?? '')}:${normalizeSize(proposal.itemColor ?? '')}` : withSize;
 }
+
+const lineLabel = (line: { size: string; color: string }) => `${line.size} / ${line.color}`;
 
 const reasonLabels: Record<string, string> = {
   wrong_item: 'nhận sai sản phẩm',
@@ -26,8 +30,17 @@ const reasonLabels: Record<string, string> = {
  */
 export function checkRequest(proposal: RequestProposal, order: Order | null, product: Product | null, now: Date): PolicyCheck {
   if (!order) return { ok: false, code: 'order_not_found', message: `Không tìm thấy đơn ${proposal.orderId}.` };
-  const item = order.items.find((candidate) => candidate.productId.toUpperCase() === proposal.productId.toUpperCase());
-  if (!item) return { ok: false, code: 'item_not_in_order', message: `Sản phẩm ${proposal.productId} không có trong đơn ${order.id}.` };
+  const lines = order.items.filter((candidate) => candidate.productId.toUpperCase() === proposal.productId.toUpperCase());
+  if (!lines.length) return { ok: false, code: 'item_not_in_order', message: `Sản phẩm ${proposal.productId} không có trong đơn ${order.id}.` };
+
+  // One order can hold the same product in several sizes/colours: the request must name the exact line.
+  const selected = proposal.itemSize || proposal.itemColor;
+  const matching = lines.filter((line) => (!proposal.itemSize || normalizeSize(line.size) === normalizeSize(proposal.itemSize)) && (!proposal.itemColor || normalizeSize(line.color) === normalizeSize(proposal.itemColor)));
+  if (selected && matching.length !== 1) return { ok: false, code: 'item_not_in_order', message: `Đơn ${order.id} không có dòng ${proposal.productId} đúng với ${[proposal.itemSize && `size ${proposal.itemSize}`, proposal.itemColor && `màu ${proposal.itemColor}`].filter(Boolean).join(', ')}. Các dòng hiện có: ${lines.map(lineLabel).join('; ')}.` };
+  if (lines.length > 1 && matching.length !== 1) return { ok: false, code: 'ambiguous_item', message: `Đơn ${order.id} có ${lines.length} dòng ${proposal.productId} (${lines.map(lineLabel).join('; ')}). Hãy hỏi khách muốn xử lý dòng nào (size / màu) rồi đề xuất lại kèm item_size và item_color.` };
+  const item = matching[0];
+  const multiLine = lines.length > 1;
+  const canonical: RequestProposal = multiLine ? { ...proposal, itemSize: item.size, itemColor: item.color } : { ...proposal, itemSize: undefined, itemColor: undefined };
   if (order.status !== 'delivered' || !order.deliveredAt) return { ok: false, code: 'order_not_delivered', message: `Đơn ${order.id} chưa được giao (trạng thái: ${order.status}); chỉ xử lý đổi/trả sau khi nhận hàng.` };
 
   const days = (now.getTime() - new Date(order.deliveredAt).getTime()) / DAY_MS;
@@ -36,10 +49,11 @@ export function checkRequest(proposal: RequestProposal, order: Order | null, pro
   if (product?.category === 'Phụ kiện' && item.isOpened) return { ok: false, code: 'excluded_item', message: 'Phụ kiện đã mở bao bì không áp dụng đổi trả.' };
   if (item.discountPercent >= 40) return { ok: false, code: 'excluded_item', message: `Sản phẩm giảm giá ${item.discountPercent}% (từ 40% trở lên) không áp dụng đổi trả.` };
 
-  const key = idempotencyKey(proposal);
+  const key = idempotencyKey(canonical);
   const same = order.requests.find((request) => request.idempotencyKey === key);
-  if (same) return { ok: true, idempotencyKey: key, summary: describe(proposal, item.size), existingRequestId: same.id };
-  const other = order.requests.find((request) => request.productId.toUpperCase() === proposal.productId.toUpperCase());
+  if (same) return { ok: true, idempotencyKey: key, summary: describe(canonical, item), proposal: canonical, existingRequestId: same.id };
+  const other = order.requests.find((request) => request.productId.toUpperCase() === proposal.productId.toUpperCase()
+    && (!multiLine || (normalizeSize(request.itemSize ?? '') === normalizeSize(item.size) && normalizeSize(request.itemColor ?? '') === normalizeSize(item.color))));
   if (other) return { ok: false, code: 'already_requested', message: `Sản phẩm này đã có yêu cầu ${other.type === 'return' ? 'trả hàng' : `đổi sang size ${other.requestedSize}`} (mã ${other.id.slice(0, 8)}).` };
 
   if (proposal.action === 'exchange_size') {
@@ -51,13 +65,14 @@ export function checkRequest(proposal: RequestProposal, order: Order | null, pro
   } else if (!(returnReasons as readonly string[]).includes(proposal.reason)) {
     return { ok: false, code: 'invalid_reason', message: 'Chỉ nhận trả hàng khi nhận sai sản phẩm, sai size/màu so với đơn hoặc sản phẩm lỗi sản xuất; không hoàn tiền vì không thích sản phẩm.' };
   }
-  return { ok: true, idempotencyKey: key, summary: describe(proposal, item.size) };
+  return { ok: true, idempotencyKey: key, summary: describe(canonical, item), proposal: canonical };
 }
 
-function describe(proposal: RequestProposal, currentSize: string) {
+function describe(proposal: RequestProposal, line: { size: string; color: string }) {
+  const target = proposal.itemSize || proposal.itemColor ? `${proposal.productId} (${lineLabel(line)})` : proposal.productId;
   return proposal.action === 'exchange_size'
-    ? `Đổi ${proposal.productId} trong đơn ${proposal.orderId} từ size ${currentSize} sang size ${proposal.requestedSize}`
-    : `Trả ${proposal.productId} trong đơn ${proposal.orderId} (lý do: ${reasonLabels[proposal.reason] ?? proposal.reason})`;
+    ? `Đổi ${target} trong đơn ${proposal.orderId} từ size ${line.size} sang size ${proposal.requestedSize}`
+    : `Trả ${target} trong đơn ${proposal.orderId} (lý do: ${reasonLabels[proposal.reason] ?? proposal.reason})`;
 }
 
 // What the customer must have said for each return reason; the model may not pick a reason on its own.

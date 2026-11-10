@@ -16,6 +16,8 @@ services:
   web:
     build: .
     env_file: .env
+    environment:
+      RATE_LIMIT_BACKEND: postgres
     command: sh -c "pnpm db:migrate && pnpm start"
     ports:
       - "127.0.0.1:3000:3000"
@@ -28,11 +30,13 @@ services:
       db:
         condition: service_healthy
       mcp:
-        condition: service_started
+        condition: service_healthy
 
   worker:
     build: .
     env_file: .env
+    environment:
+      RATE_LIMIT_BACKEND: postgres
     command: sh -c "pnpm db:migrate && pnpm worker"
     volumes:
       - ./data:/app/data
@@ -53,6 +57,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -63,5 +72,39 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on: [web]
 
+  # `docker compose --profile observability up -d`: Prometheus (internal only) + Grafana on 127.0.0.1:3002.
+  # Needs METRICS_TOKEN (and GRAFANA_ADMIN_PASSWORD) in .env; web serves /api/metrics only when METRICS_TOKEN is set.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
+    entrypoint: ["/bin/sh", "-c"]
+    # The token is written to a file inside the container so it never appears in prometheus.yml.
+    command:
+      - 'printf %s "$$METRICS_TOKEN" > /tmp/metrics_token && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=15d'
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes:
+      - ./ops/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on: [web]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./ops/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus]
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

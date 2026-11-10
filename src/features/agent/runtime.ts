@@ -1,11 +1,13 @@
+import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import { ChatOpenAI } from '@langchain/openai';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { PostgresStore } from '@langchain/langgraph-checkpoint-postgres/store';
 import { postgresApprovals } from '@/features/agent/approvals';
+import { postgresConfirmations } from '@/features/agent/confirmations';
 import { mcpGateway } from '@/features/agent/gateway';
 import { compileAgentGraph, type AgentGraph, type AgentModel } from '@/features/agent/graph';
-import { agentTools } from '@/features/agent/tools';
-import { answerWithRag } from '@/features/chat/rag-answer';
+import { loadAgentRuntime } from '@/features/ai/agents';
+import { getOpenAiKey } from '@/features/settings/openai-key';
 import { env } from '@/lib/env';
 
 export const LANGGRAPH_SCHEMA = 'langgraph';
@@ -13,12 +15,14 @@ export const MEMORY_TTL_MINUTES = 30 * 24 * 60;
 
 /** Same model contract as Week 6, through LangChain's Responses API client. */
 export const openAiAgentModel: AgentModel = {
-  async invoke(messages, { signal, user, forceFinal }) {
+  async invoke(messages, { signal, user, forceFinal, agent }) {
+    const apiKey = await getOpenAiKey();
+    if (!apiKey) throw new Error('Chưa cấu hình OpenAI API key (Admin → Cài đặt).');
     const model = new ChatOpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      model: env.OPENAI_CHAT_MODEL,
-      temperature: env.OPENAI_TEMPERATURE,
-      maxTokens: env.OPENAI_MAX_OUTPUT_TOKENS,
+      apiKey,
+      model: agent.model,
+      temperature: agent.temperature,
+      maxTokens: agent.maxTokens,
       timeout: env.OPENAI_TIMEOUT_MS,
       maxRetries: env.OPENAI_MAX_RETRIES,
       useResponsesApi: true,
@@ -26,7 +30,14 @@ export const openAiAgentModel: AgentModel = {
       service_tier: 'default',
       user,
     });
-    return model.bindTools(agentTools, { parallel_tool_calls: false, tool_choice: forceFinal ? 'final_answer' : 'required', strict: true }).invoke(messages, { signal });
+    // Our own tools use OpenAI's strict mode (arguments always match the schema). Schemas published by external MCP servers
+    // rarely meet strict mode's rules, so those are sent non-strict (and validated against their schema before any call).
+    const definitions = agent.tools.map((item) => {
+      const definition = convertToOpenAITool(item);
+      (definition.function as { strict?: boolean }).strict = !agent.externalTools.has(item.name);
+      return definition;
+    });
+    return model.bindTools(definitions, { parallel_tool_calls: false, tool_choice: forceFinal ? 'final_answer' : 'required' }).invoke(messages, { signal });
   },
 };
 
@@ -49,7 +60,7 @@ export function getAgentRuntime(): Runtime {
   if (!holder.fashionAgentRuntime) {
     const checkpointer = createCheckpointer();
     const store = createStore();
-    const graph = compileAgentGraph({ model: openAiAgentModel, gateway: mcpGateway, approvals: postgresApprovals, answerWithRag, now: () => new Date() }, checkpointer, store);
+    const graph = compileAgentGraph({ model: openAiAgentModel, gateway: mcpGateway, approvals: postgresApprovals, confirmations: postgresConfirmations, loadAgent: loadAgentRuntime, now: () => new Date() }, checkpointer, store);
     holder.fashionAgentRuntime = { graph, checkpointer, store };
   }
   return holder.fashionAgentRuntime;

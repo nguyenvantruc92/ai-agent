@@ -1,0 +1,37 @@
+# Development overlay: the same services, but code changes show up without rebuilding the image.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d web worker mcp
+#
+# `src/` and `prompts/` are mounted from the host, so:
+#   - web runs `next dev` (hot reload: save a file, the browser updates in about a second),
+#   - worker and mcp run under `tsx watch` (restart on save).
+# Rebuild (`docker compose build`) only when package.json / the lockfile / config files (next.config.ts, tsconfig, postcss) change,
+# or `docker compose ... restart web` for a new migration or config change. Back to the normal build: run the first command
+# without `-f docker-compose.dev.yml` and add `--build`.
+#
+# Only src/, prompts/ and next.config.ts are mounted on purpose: `next dev` writes files into its project root (.next, next-env.d.ts, AGENTS.md),
+# and that should stay inside the container, not appear in your repository as root-owned files.
+services:
+  web:
+    # --webpack: the same bundler as `pnpm build`; the server-only packages in next.config.ts are set up for it.
+    command: sh -c "pnpm db:migrate && pnpm exec next dev --webpack -H 0.0.0.0 -p 3000"
+    environment:
+      NODE_ENV: development
+      # Docker on macOS/Windows does not forward file-change events to the container; harmless on Linux.
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
+    volumes:
+      - ./src:/app/src
+      - ./prompts:/app/prompts
+      - ./next.config.ts:/app/next.config.ts:ro
+
+  worker:
+    command: sh -c "pnpm db:migrate && pnpm exec tsx watch src/worker/index.ts"
+    volumes:
+      - ./src:/app/src
+      - ./prompts:/app/prompts
+
+  mcp:
+    command: pnpm exec tsx watch src/mcp/server.ts
+    volumes:
+      - ./src:/app/src
+      - ./prompts:/app/prompts

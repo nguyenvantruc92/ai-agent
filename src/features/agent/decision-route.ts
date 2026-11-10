@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { ApprovalConflictError, decideAndResume } from '@/features/agent/session';
 import { requireAdmin } from '@/lib/http';
 import { logger } from '@/lib/logger';
+import { safeError } from '@/lib/redact';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -19,7 +20,7 @@ export function decisionHandler(decision: 'approved' | 'rejected') {
       return NextResponse.json({ status: outcome.approval.status, resumed: outcome.resumed, traceId, answer: outcome.resumed && outcome.result.kind === 'answer' ? outcome.result.answer.answer : null });
     } catch (error) {
       if (error instanceof ApprovalConflictError) return NextResponse.json({ error: error.message, traceId }, { status: 409 });
-      logger.error({ trace_id: traceId, stage: 'approval.resume_failed', error: error instanceof Error ? error.message : String(error) });
+      logger.error({ trace_id: traceId, stage: 'approval.resume_failed', error: safeError(error) });
       return NextResponse.json({ error: 'Đã ghi nhận quyết định nhưng chưa resume được. Bấm lại để thử resume.', traceId }, { status: 500 });
     }
   };

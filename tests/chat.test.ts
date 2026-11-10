@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { DbChunk } from '@/db/client';
-import { loadPromptTemplate, selectContext } from '@/features/chat/prompt';
 import { chatRequestSchema, insufficientAnswer } from '@/features/chat/schema';
 import { validateAnswer } from '@/features/chat/validation';
 
@@ -40,19 +38,5 @@ describe('chatRequestSchema', () => {
     expect(chatRequestSchema.safeParse({ message: 'a'.repeat(2001) }).success).toBe(false);
     expect(chatRequestSchema.safeParse({ message: 'Hi', threadId: 'abc' }).success).toBe(false);
     expect(chatRequestSchema.parse({ message: 'Phí\u0000 ship?' }).message).toBe('Phí ship?');
-  });
-});
-
-describe('prompt', () => {
-  it('sends only the versioned text block with the sources placeholder', async () => {
-    const template = await loadPromptTemplate();
-    expect(template).toContain('{{retrieved_sources}}');
-    expect(template).not.toContain('Hợp đồng server-side');
-  });
-
-  it('limits context by chunk count and token budget', () => {
-    const chunk = (id: string, length: number) => ({ id, source_id: id, source_type: 'policy', title: id, content: 'x'.repeat(length), metadata: {}, similarity: 0.9 }) as DbChunk;
-    expect(selectContext([chunk('a', 300), chunk('b', 300), chunk('c', 300), chunk('d', 300), chunk('e', 300), chunk('f', 300)])).toHaveLength(5);
-    expect(selectContext([chunk('a', 3000), chunk('b', 1000)]).map((item) => item.source_id)).toEqual(['a']);
   });
 });

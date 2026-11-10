@@ -1,0 +1,43 @@
+# Same thresholds as the in-app worker alerts (ALERT_* in .env). Prometheus shows these under Alerts; notifications
+# are sent by the worker webhook (ALERT_WEBHOOK_URL), so no Alertmanager is needed for this project.
+groups:
+  - name: fashion-tomodev
+    rules:
+      - alert: WebMetricsDown
+        expr: up{job="fashion-web"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: 'Prometheus không scrape được /api/metrics (web down hoặc METRICS_TOKEN sai).' }
+
+      - alert: DependencyFailureRateHigh
+        expr: |
+          (
+            sum by (dependency) (rate(fashion_dependency_call_duration_seconds_count{outcome=~"failed|timeout"}[15m]))
+            / sum by (dependency) (rate(fashion_dependency_call_duration_seconds_count{outcome!="aborted"}[15m]))
+          ) >= 0.2
+          and sum by (dependency) (increase(fashion_dependency_call_duration_seconds_count{outcome!="aborted"}[15m])) >= 10
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: '{{ $labels.dependency }}: tỉ lệ lỗi/timeout {{ $value | humanizePercentage }} trong 15 phút.' }
+
+      - alert: CircuitOpen
+        expr: fashion_circuit_state == 2
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: 'Circuit {{ $labels.circuit }} đang mở: dependency lỗi liên tiếp (chỉ chặn lời gọi khi CIRCUIT_BREAKER_MODE=enforce).' }
+
+      - alert: ChatP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(fashion_chat_turn_duration_seconds_bucket{outcome="ok"}[15m]))) > 15
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: 'Chat p95 {{ $value | humanizeDuration }} > 15s.' }
+
+      - alert: ApprovalBacklogOld
+        expr: fashion_approval_oldest_pending_seconds > 4 * 3600
+        labels: { severity: warning }
+        annotations: { summary: 'Có yêu cầu đổi/trả chờ duyệt hơn 4 giờ.' }
+
+      - alert: IngestionFailed
+        expr: fashion_ingestion_failed_24h > 0
+        labels: { severity: warning }
+        annotations: { summary: '{{ $value }} job index tài liệu lỗi trong 24 giờ.' }
