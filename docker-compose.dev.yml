@@ -22,6 +22,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./prompts:/app/prompts
+      # The seed photos change with the repo; without this `pnpm db:seed` in the container would use the copy baked into the image.
+      - ./data/seed:/app/data/seed:ro
       - ./next.config.ts:/app/next.config.ts:ro
 
   worker:
