@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Garment } from '@/components/shop/garment';
+import { ImageLightbox } from '@/components/ui/image-lightbox';
 import { cn } from '@/lib/cn';
 
 type Image = { id: string; url: string; alt: string };
@@ -9,6 +10,7 @@ type Image = { id: string; url: string; alt: string };
 /** Main photo plus thumbnails. Without photos it shows a neutral placeholder block. */
 export function ProductGallery({ images, name }: { images: Image[]; name: string }) {
   const [index, setIndex] = useState(0);
+  const [viewing, setViewing] = useState(false);
   if (images.length === 0) {
     return (
       <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-gradient-to-br from-[#ede9fe] to-[#fae8ff]" role="img" aria-label={`${name} (chưa có ảnh)`}>
@@ -19,8 +21,11 @@ export function ProductGallery({ images, name }: { images: Image[]; name: string
   const current = images[Math.min(index, images.length - 1)];
   return (
     <div className="space-y-3">
-      {/* eslint-disable-next-line @next/next/no-img-element -- local files with immutable caching */}
-      <img src={current.url} alt={current.alt} className="aspect-[4/5] w-full rounded-card bg-sand object-cover shadow-card" />
+      <button type="button" onClick={() => setViewing(true)} aria-label="Xem ảnh lớn" className="group block w-full cursor-zoom-in overflow-hidden rounded-card bg-sand shadow-card focus-visible:ring-2 focus-visible:ring-brand focus-visible:outline-none">
+        {/* eslint-disable-next-line @next/next/no-img-element -- local files with immutable caching */}
+        <img src={current.url} alt={current.alt} className="aspect-[4/5] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105" />
+      </button>
+      <ImageLightbox images={images} index={Math.min(index, images.length - 1)} open={viewing} onIndexChange={setIndex} onOpenChange={setViewing} />
       {images.length > 1 && (
         <ul className="grid grid-cols-5 gap-2" aria-label="Ảnh sản phẩm">
           {images.map((image, i) => (

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LogoMark } from '@/components/brand/logo';
 import { OpenChatButton } from '@/components/shop/chat-widget';
 import { MobileMenu } from '@/components/shop/mobile-menu';
 import { visitorSession } from '@/features/chat/visitor';
@@ -20,7 +21,7 @@ export async function SiteHeader() {
       <header className="sticky top-0 z-20 border-b border-line bg-white/90 shadow-[0_1px_0_rgb(124_58_237/0.04)] backdrop-blur">
         <div className="relative mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
           <MobileMenu items={items} />
-          <Link href="/" className="flex items-center gap-2 text-xl font-extrabold tracking-[0.14em] text-ink"><span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-brand to-accent text-sm tracking-normal text-white" aria-hidden>T</span>TOMODEV</Link>
+          <Link href="/" className="flex items-center gap-2 text-xl font-extrabold tracking-[0.14em] text-ink"><LogoMark className="size-8" />TOMODEV</Link>
           <nav aria-label="Danh mục" className="ml-2 hidden gap-5 text-sm text-ink-soft md:flex">
             {nav.slice(0, 6).map((category, index) => <Link key={category.id} href={`/c/${category.slug}`} className={`whitespace-nowrap font-medium transition-colors hover:text-brand ${index >= 5 ? 'hidden 2xl:block' : index >= 4 ? 'hidden xl:block' : ''}`}>{category.name}</Link>)}
           </nav>

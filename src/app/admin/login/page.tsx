@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FormField } from '@/components/admin/form';
 import { Button } from '@/components/admin-ui/button';
+import { LogoMark } from '@/components/brand/logo';
 import { Input } from '@/components/admin-ui/input';
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-md space-y-6">
           <div>
-            <span className="mb-6 grid size-12 place-items-center rounded-xl bg-brand-500 font-display text-xl font-semibold text-white">T</span>
+            <LogoMark className="mb-6 size-12" />
             <h1 className="text-title-lg font-semibold text-gray-800">Đăng nhập quản trị</h1>
             <p className="mt-1.5 text-sm text-gray-500">Nhập mật khẩu quản trị để quản lý cửa hàng và trợ lý AI.</p>
           </div>
@@ -36,6 +37,7 @@ export default function LoginPage() {
         <div className="absolute -top-24 -right-24 size-96 rounded-full bg-brand-500/30 blur-3xl" aria-hidden />
         <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-brand-700/40 blur-3xl" aria-hidden />
         <div className="relative max-w-sm px-8 text-center">
+          <LogoMark className="mx-auto mb-5 size-16" />
           <p className="font-display text-2xl font-semibold tracking-[0.2em] text-white">TOMODEV</p>
           <p className="mt-4 text-gray-400">Quản lý sản phẩm, theo dõi tồn kho và duyệt yêu cầu đổi/trả của khách tại một nơi.</p>
         </div>

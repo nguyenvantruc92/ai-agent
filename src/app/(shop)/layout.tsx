@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export default function ShopLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="flex min-h-screen flex-col bg-paper text-ink">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-4">{children}</main>
+      {/* flex-1 pushes the footer to the bottom of the viewport when the page content is short */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4">{children}</main>
       <SiteFooter />
       <ChatWidget />
     </div>

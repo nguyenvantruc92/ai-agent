@@ -67,11 +67,13 @@ Mọi thứ cần để chạy demo nằm trong repo; **không có khóa bí m�
 |---|---|
 | 38 sản phẩm, 11 danh mục (nạp khi migrate/seed nếu bảng trống) | `data/raw/bang_gia_san_pham_thoi_trang_nam.xlsx` |
 | 13 đơn hàng demo `FT-2026-1001`–`1013` | `src/features/orders/seed-data.ts` (nạp khi migrate) |
-| Ảnh chính của từng sản phẩm (chỉ cho sản phẩm chưa có ảnh) | `data/seed/product-images/<MÃ>.webp` |
+| Ảnh chính của từng sản phẩm: thêm cho sản phẩm chưa có ảnh, và **thay** ảnh do seed tạo trước đó khi file seed đổi (ảnh admin tự upload không bao giờ bị thay; file cũ vào `data/trash`) | `data/seed/product-images/<MÃ>.webp` |
 | FAQ chính sách, hướng dẫn tra đơn/hủy đơn/đổi trả | `data/raw/faq_*.pdf` (index bằng worker, cần OpenAI key) |
 | Agent mặc định, scope "Chính sách", MCP server nội bộ | `src/features/ai/seed.ts`, `prompts/` |
 
-Chưa có OpenAI key thì web, admin và catalog vẫn chạy; việc index (embedding) và chat chờ đến khi nhập key ở **Admin → Cài đặt** (khóa lưu mã hóa trong DB, không nằm trong git). Ảnh được sinh bằng `python3 scripts/generate-product-images.py data/seed/product-images` (cần ImageMagick); chỉ chạy lại khi muốn đổi ảnh. Khóa, cuộc trò chuyện, đơn của khách và file upload trong DB dev **không** được export.
+**Môi trường đã chạy từ trước** (đã có ảnh cũ trong DB) muốn nhận ảnh mới sau khi `git pull`: `docker compose up -d --build` (ảnh seed và ảnh danh mục/hero nằm trong image; migration `0018` tự chạy), rồi `docker compose exec web pnpm db:seed`. Ở chế độ dev (`docker-compose.dev.yml`) `data/seed` được mount từ máy host nên không cần build lại, chỉ cần `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d web` rồi chạy seed.
+
+Chưa có OpenAI key thì web, admin và catalog vẫn chạy; việc index (embedding) và chat chờ đến khi nhập key ở **Admin → Cài đặt** (khóa lưu mã hóa trong DB, không nằm trong git). Ảnh sản phẩm demo là ảnh thật từ Unsplash (danh sách và credit trong `scripts/product-image-picks.json`, `THIRD_PARTY_NOTICES.md`); muốn đổi ảnh thì sửa file picks rồi chạy `UNSPLASH_ACCESS_KEY=... python3 scripts/fetch-product-images.py <thư mục trống>` (cần ImageMagick), sau đó chép WebP vào `data/seed/product-images`. Khóa, cuộc trò chuyện, đơn của khách và file upload trong DB dev **không** được export.
 
 ## AI Agent đa cấu hình (Admin → AI)
 

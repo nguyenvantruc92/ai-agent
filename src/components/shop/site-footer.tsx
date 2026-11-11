@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LogoMark } from '@/components/brand/logo';
 import { OpenChatButton } from '@/components/shop/chat-widget';
 import { getShopSettings } from '@/features/shop/settings';
 import { formatVnd } from '@/lib/format';
@@ -8,7 +9,7 @@ export async function SiteFooter() {
   return (
     <footer className="mt-24 bg-ink text-white/70">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 text-sm md:grid-cols-3">
-        <div><p className="text-lg font-extrabold tracking-[0.14em] text-white">TOMODEV</p><p className="mt-2 max-w-xs">Thời trang nam tối giản: sơ mi, polo, chinos và phụ kiện, chất liệu thoải mái, form chuẩn.</p></div>
+        <div><p className="flex items-center gap-2.5 text-lg font-extrabold tracking-[0.14em] text-white"><LogoMark className="size-8" />TOMODEV</p><p className="mt-2 max-w-xs">Thời trang nam tối giản: sơ mi, polo, chinos và phụ kiện, chất liệu thoải mái, form chuẩn.</p></div>
         <div>
           <p className="font-semibold text-white">Chính sách</p>
           <ul className="mt-2 space-y-1.5">

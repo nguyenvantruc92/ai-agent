@@ -6,6 +6,7 @@ import { Badge } from '@/components/admin-ui/badge';
 import { Button } from '@/components/admin-ui/button';
 import { buttonVariants } from '@/components/admin-ui/button-variants';
 import { BoxIcon, PlusIcon, SearchIcon } from '@/components/admin-ui/icons';
+import { ZoomableImage } from '@/components/ui/image-lightbox';
 import { listCategories, listProducts, type ProductStatus } from '@/features/catalog/admin-repository';
 import { productStatusCounts } from '@/features/catalog/dashboard';
 import { productListQuery } from '@/features/catalog/schemas';
@@ -81,8 +82,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                 <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-white/2">
                   <td className={td}>
                     <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnails are small local files */}
-                      {product.imageUrl ? <img src={product.imageUrl} alt="" className="size-12 rounded-lg object-cover" /> : <div className="grid size-12 place-items-center rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-800"><BoxIcon className="size-5" /></div>}
+                      {product.imageUrl ? <ZoomableImage src={product.imageUrl} alt={product.name} label={`Xem ảnh ${product.name}`} buttonClassName="size-12 shrink-0 rounded-lg" /> : <div className="grid size-12 place-items-center rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-800"><BoxIcon className="size-5" /></div>}
                       <div className="min-w-0"><Link href={`/admin/products/${product.id}`} className="block truncate font-medium text-gray-800 hover:underline dark:text-white/90">{product.name}</Link><p className="text-theme-xs text-gray-500 dark:text-gray-400">{product.code} · {product.variantCount} biến thể</p></div>
                     </div>
                   </td>

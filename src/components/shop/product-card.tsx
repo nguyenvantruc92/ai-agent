@@ -26,7 +26,7 @@ export function ProductCard({ product, priority = false }: { product: StoreCard;
         <div className={`relative aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br shadow-sm ring-1 ring-line transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-card ${product.imageUrl ? 'from-sand to-sand' : toneFor(product.categorySlug)}`}>
           {product.imageUrl
             // eslint-disable-next-line @next/next/no-img-element -- small local files served with immutable caching
-            ? <img src={product.imageUrl} alt="" loading={priority ? 'eager' : 'lazy'} className={`size-full object-cover transition-transform duration-500 group-hover:scale-105 ${product.soldOut ? 'opacity-60 grayscale' : ''}`} />
+            ? <img src={product.imageUrl} alt="" loading={priority ? 'eager' : 'lazy'} className={`size-full object-cover transition-transform duration-500 ease-out group-hover:scale-110 ${product.soldOut ? 'opacity-60 grayscale' : ''}`} />
             : <Garment className="absolute inset-[24%] text-brand/20 transition-transform duration-500 group-hover:scale-110" />}
           <span className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
             {product.soldOut ? <Badge tone="dark">Hết hàng</Badge>
