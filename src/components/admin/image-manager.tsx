@@ -4,6 +4,7 @@ import { ChangeEvent, useState } from 'react';
 import { useConfirm, useToast } from '@/components/admin/feedback';
 import { Button } from '@/components/admin-ui/button';
 import { ArrowLeftIcon, ArrowRightIcon, TrashBinIcon, UploadIcon } from '@/components/admin-ui/icons';
+import { ImageLightbox } from '@/components/ui/image-lightbox';
 import type { ImageRow } from '@/features/catalog/admin-repository';
 import { cn } from '@/lib/cn';
 import { callApi } from '@/lib/client-api';
@@ -14,6 +15,7 @@ export function ImageManager({ productId, initial }: { productId: string; initia
   const confirm = useConfirm();
   const [images, setImages] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const files = [...(event.target.files ?? [])];
@@ -59,9 +61,11 @@ export function ImageManager({ productId, initial }: { productId: string; initia
         <ul className="grid grid-cols-2 gap-3">
           {images.map((image, index) => (
             <li key={image.id} className="space-y-1.5">
-              <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
-                {/* eslint-disable-next-line @next/next/no-img-element -- local admin preview */}
-                <img src={image.url} alt={image.alt} className="size-full object-cover" />
+              <div className="group relative aspect-[4/5] overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
+                <button type="button" onClick={() => setViewing(index)} aria-label={`Xem ảnh ${index + 1} cỡ lớn`} className="block size-full cursor-zoom-in focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none focus-visible:ring-inset">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local admin preview */}
+                  <img src={image.url} alt={image.alt} className="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-110" />
+                </button>
                 {index === 0 && <span className="absolute top-2 left-2 rounded-full bg-gray-900/80 px-2 py-0.5 text-[11px] font-medium text-white">Ảnh bìa</span>}
               </div>
               <div className="flex items-center justify-between">
@@ -75,6 +79,7 @@ export function ImageManager({ productId, initial }: { productId: string; initia
           ))}
         </ul>
       )}
+      {images.length > 0 && <ImageLightbox images={images} index={viewing ?? 0} open={viewing !== null} onIndexChange={setViewing} onOpenChange={(open) => { if (!open) setViewing(null); }} />}
     </section>
   );
 }

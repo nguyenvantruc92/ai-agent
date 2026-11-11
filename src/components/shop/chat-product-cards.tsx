@@ -28,7 +28,7 @@ export function ChatProductCards({ products, onOpen }: { products: StoreCard[]; 
               <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${product.imageUrl ? 'from-sand to-sand' : toneFor(product.categorySlug)} ${single ? 'w-24 self-stretch' : 'aspect-[4/5] w-full'}`}>
                 {product.imageUrl
                   // eslint-disable-next-line @next/next/no-img-element -- small local files served with immutable caching
-                  ? <img src={product.imageUrl} alt="" loading="lazy" className={`size-full object-cover ${product.soldOut ? 'opacity-60 grayscale' : ''}`} />
+                  ? <img src={product.imageUrl} alt="" loading="lazy" className={`size-full object-cover transition-transform duration-500 ease-out group-hover:scale-110 ${product.soldOut ? 'opacity-60 grayscale' : ''}`} />
                   : <Garment className="absolute inset-[24%] text-brand/20" />}
                 {product.soldOut
                   ? <span className="absolute top-1.5 left-1.5 rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-white">Hết hàng</span>

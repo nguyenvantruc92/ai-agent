@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,14 +51,47 @@ describe.skipIf(!url)('seedProductImages (Postgres)', () => {
     expect(await seed.seedProductImages(dir)).toBe(0);
   });
 
-  it('never replaces an image that already exists and rejects files that are not images', async () => {
+  it('rejects files that are not images', async () => {
     await product('AO-1', 'Áo polo đen');
     await writeFile(join(dir, 'AO-1.webp'), Buffer.from('not an image'));
     await expect(seed.seedProductImages(dir)).rejects.toThrow(/JPG, PNG hoặc WebP/);
+  });
+
+  it('replaces an image the seed created when the seed file changes, and moves the old file to the trash', async () => {
+    await product('AO-1', 'Áo polo đen');
     await writeFile(join(dir, 'AO-1.webp'), webp);
     expect(await seed.seedProductImages(dir)).toBe(1);
+    const [before] = await sql<{ id: string; storage_key: string }[]>`SELECT id, storage_key FROM product_images`;
     await writeFile(join(dir, 'AO-1.webp'), Buffer.concat([webp, Buffer.from('x')]));
+    expect(await seed.seedProductImages(dir)).toBe(1);
+    const rows = await sql<{ id: string; storage_key: string; seed_hash: string }[]>`SELECT id, storage_key, seed_hash FROM product_images`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(before.id);
+    expect(rows[0].storage_key).not.toBe(before.storage_key);
+    expect(await readFile(join(root, 'data', 'uploads', rows[0].storage_key))).toEqual(Buffer.concat([webp, Buffer.from('x')]));
+    expect((await readdir(join(root, 'data', 'trash'))).some((name) => name.endsWith(before.storage_key.split('/').pop()!))).toBe(true);
     expect(await seed.seedProductImages(dir)).toBe(0);
+  });
+
+  it('replaces a main image from before seed_hash existed (alt is still the product name) once, then tags it', async () => {
+    const created = await product('AO-1', 'Áo polo đen');
+    await sql`INSERT INTO product_images (id, product_id, storage_key, alt, sort_order) VALUES (gen_random_uuid(), ${created.id}, ${`products/${created.id}/legacy.png`}, 'Áo polo đen', 0)`;
+    await writeFile(join(dir, 'AO-1.webp'), webp);
+    expect(await seed.seedProductImages(dir)).toBe(1);
+    const rows = await sql<{ storage_key: string; seed_hash: string | null }[]>`SELECT storage_key, seed_hash FROM product_images`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].storage_key).toMatch(/\.webp$/);
+    expect(rows[0].seed_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(await seed.seedProductImages(dir)).toBe(0);
+  });
+
+  it('never replaces an image an admin uploaded', async () => {
+    const created = await product('AO-1', 'Áo polo đen');
+    await admin.addProductImage(created.id, `products/${created.id}/admin.jpg`, '');
+    await writeFile(join(dir, 'AO-1.webp'), webp);
+    expect(await seed.seedProductImages(dir)).toBe(0);
+    const rows = await sql<{ storage_key: string; seed_hash: string | null }[]>`SELECT storage_key, seed_hash FROM product_images`;
+    expect(rows).toEqual([{ storage_key: `products/${created.id}/admin.jpg`, seed_hash: null }]);
   });
 
   it('does nothing when the seed folder does not exist', async () => {

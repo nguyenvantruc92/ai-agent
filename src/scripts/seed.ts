@@ -16,7 +16,7 @@ async function main() {
   await ensureAiDefaults();
   if (await seedCatalogIfEmpty()) console.log('Imported demo catalog');
   const images = await seedProductImages();
-  if (images) console.log(`Added ${images} product images`);
+  if (images) console.log(`Added or updated ${images} product images`);
   console.log((await queueCatalogReindex()).queued ? 'Queued catalog' : 'Catalog already queued');
   const existing = await listDocuments();
   for (const filename of seeds) {

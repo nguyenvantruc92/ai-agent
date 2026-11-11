@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AdminThemeProvider, useAdminTheme } from '@/components/admin/admin-theme';
+import { LogoMark } from '@/components/brand/logo';
 import { FeedbackProvider } from '@/components/admin/feedback';
 import { SyncPill } from '@/components/admin/sync-pill';
 import { Avatar, AvatarFallback } from '@/components/admin-ui/avatar';
@@ -86,7 +87,7 @@ function Shell({ pendingApprovals, processingOrders, sync, children }: { pending
         className={cn('fixed inset-y-0 left-0 z-99999 flex flex-col border-r border-gray-200 bg-white px-5 transition-all duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-900',
           wide ? 'w-72.5' : 'w-22.5', mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')}>
         <Link href="/admin" className={cn('flex items-center gap-3 py-8', !wide && 'lg:justify-center')}>
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500 font-display text-lg font-semibold text-white">T</span>
+          <LogoMark className="size-10 shrink-0" />
           {wide && <span className="leading-tight"><span className="block font-display text-lg font-semibold tracking-[0.14em] text-gray-800 dark:text-white/90">TOMODEV</span><span className="block text-xs text-gray-500 dark:text-gray-400">Quản trị cửa hàng</span></span>}
         </Link>
         <nav aria-label="Quản trị" className="custom-scrollbar flex-1 space-y-6 overflow-y-auto pb-6">

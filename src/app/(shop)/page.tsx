@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import heroBg from '@/assets/hero/hero-bg.webp';
+import heroNew from '@/assets/hero/hero-new.webp';
 import { OpenChatButton } from '@/components/shop/chat-widget';
 import { Garment } from '@/components/shop/garment';
 import { ProductGrid } from '@/components/shop/product-card';
@@ -6,6 +8,7 @@ import { buttonClass } from '@/components/ui/button';
 import { listStoreCategories, listStoreProducts } from '@/features/catalog/queries';
 import { storeListQuery } from '@/features/catalog/schemas';
 import { getShopSettings } from '@/features/shop/settings';
+import { categoryImages } from '@/lib/category-images';
 import { formatVnd } from '@/lib/format';
 
 export const metadata = { title: { absolute: 'Tomodev Fashion — thời trang nam trẻ trung' } };
@@ -40,6 +43,10 @@ export default async function HomePage() {
   return (
     <>
       <section className="relative mt-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#f1e9ff] via-white to-[#ffe4f1] px-6 py-12 sm:px-12 md:py-20">
+        {/* eslint-disable-next-line @next/next/no-img-element -- static hero photo, already sized */}
+        <img src={heroBg.src} width={heroBg.width} height={heroBg.height} alt="" fetchPriority="high" className="pointer-events-none absolute inset-0 size-full object-cover object-right" aria-hidden />
+        {/* Light tint keeps the headline readable: solid on phones, fading to the photo on the right from md up. */}
+        <div className="pointer-events-none absolute inset-0 bg-[#f6f0ff]/85 md:bg-transparent md:bg-gradient-to-r md:from-[#f6f0ff] md:via-[#f6f0ff]/80 md:to-[#f6f0ff]/15" aria-hidden />
         <div className="pointer-events-none absolute -top-24 -right-24 size-96 rounded-full bg-gradient-to-br from-brand/30 to-accent/20 blur-3xl" aria-hidden />
         <div className="relative grid items-center gap-10 md:grid-cols-[1.1fr_1fr]">
           <div>
@@ -54,8 +61,10 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="relative mx-auto hidden aspect-square w-full max-w-md md:block" aria-hidden>
-            <div className="absolute inset-[8%] rounded-[2.5rem] bg-gradient-to-br from-brand to-[#a855f7] shadow-card" />
-            <Garment className="absolute inset-[24%] text-white/90 drop-shadow-lg" />
+            <div className="absolute inset-[8%] overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-brand to-[#a855f7] shadow-card">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static hero photo, already sized */}
+              <img src={heroNew.src} width={heroNew.width} height={heroNew.height} alt="" className="size-full object-cover" />
+            </div>
             <div className="absolute top-2 left-0 grid size-24 -rotate-6 place-items-center rounded-3xl bg-white text-center shadow-card ring-1 ring-line"><span><b className="block text-xl text-brand">NEW</b><span className="text-[11px] text-ink-muted">Mới về</span></span></div>
             <div className="absolute right-0 bottom-6 rounded-2xl bg-white px-4 py-3 shadow-card ring-1 ring-line"><p className="text-[11px] text-ink-muted">Giao hàng</p><p className="text-sm font-bold text-ink">Miễn phí từ {formatVnd(settings.freeShippingFromVnd)}</p></div>
             <div className="absolute bottom-0 left-8 size-12 rounded-full bg-accent shadow-card" />
@@ -77,13 +86,21 @@ export default async function HomePage() {
         <section className="pt-16" aria-labelledby="danh-muc">
           <Heading id="danh-muc" eyebrow="Khám phá" title="Mua theo danh mục" />
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {shown.map((category, index) => (
-              <Link key={category.id} href={`/c/${category.slug}`} className="group relative aspect-[4/5] overflow-hidden rounded-3xl ring-1 ring-line">
-                <div className={`absolute inset-0 bg-gradient-to-br ${tones[index % tones.length]} transition-transform duration-500 group-hover:scale-105`} />
-                <Garment className="absolute inset-[26%] text-white/70 transition-transform duration-500 group-hover:scale-110" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/75 to-transparent p-4 pt-10 text-white"><p className="text-lg font-bold">{category.name}</p><p className="text-xs text-white/80">{category.productCount} sản phẩm</p></div>
-              </Link>
-            ))}
+            {shown.map((category, index) => {
+              const photo = categoryImages[category.slug];
+              return (
+                <Link key={category.id} href={`/c/${category.slug}`} className="group relative aspect-[4/5] overflow-hidden rounded-3xl ring-1 ring-line">
+                  {photo
+                    // eslint-disable-next-line @next/next/no-img-element -- small static files, already sized for the tile
+                    ? <img src={photo.src} width={photo.width} height={photo.height} alt="" loading="lazy" className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    : <>
+                        <div className={`absolute inset-0 bg-gradient-to-br ${tones[index % tones.length]} transition-transform duration-500 group-hover:scale-105`} />
+                        <Garment className="absolute inset-[26%] text-white/70 transition-transform duration-500 group-hover:scale-110" />
+                      </>}
+                  <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t ${photo ? 'from-ink/85 via-ink/40' : 'from-ink/75'} to-transparent p-4 pt-12 text-white`}><p className="text-lg font-bold">{category.name}</p><p className="text-xs text-white/80">{category.productCount} sản phẩm</p></div>
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}

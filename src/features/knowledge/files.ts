@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { env } from '@/lib/env';
 
@@ -38,5 +38,11 @@ export async function moveToTrash(storageKey: string) {
   const source = join(uploadRoot, storageKey);
   const target = join(trashRoot, `${randomUUID()}-${basename(storageKey)}`);
   await mkdir(trashRoot, { recursive: true });
-  await rename(source, target);
+  try { await rename(source, target); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+    // data/uploads and data/trash are separate bind mounts in Docker, and rename() cannot cross mounts.
+    await copyFile(source, target);
+    await unlink(source);
+  }
 }
